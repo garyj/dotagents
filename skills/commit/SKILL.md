@@ -1,9 +1,6 @@
 ---
 name: commit
 description: Create well-formatted commits with conventional commit format and emoji. Use when committing code changes, staging files, or creating atomic git commits.
-allowed-tools: Bash(git add:*), Bash(git status:*), Bash(git commit:*), Bash(git diff:*), Bash(git log:*)
-argument-hint: [message] | --no-verify | --amend
-disable-model-invocation: true
 ---
 
 # Smart Git Commit
