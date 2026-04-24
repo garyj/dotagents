@@ -1,11 +1,11 @@
 ---
 name: commit
-description: Create well-formatted commits with conventional commit format and emoji. Use when committing code changes, staging files, or creating atomic git commits.
+description: Create well-formatted commits that match the current repo's existing convention. Use when committing code changes, staging files, or creating atomic git commits. Detects the repo's prefix vocabulary, subject style, and body style from history instead of imposing one format.
 ---
 
 # Smart Git Commit
 
-Create well-formatted commit: $ARGUMENTS
+Create a well-formatted commit: $ARGUMENTS
 
 ## Current Repository State
 
@@ -13,107 +13,157 @@ Create well-formatted commit: $ARGUMENTS
 - Current branch: !`git branch --show-current`
 - Staged changes: !`git diff --cached --stat`
 - Unstaged changes: !`git diff --stat`
-- Recent commits: !`git log --oneline -5`
+- Recent commits (subjects only): !`git log --pretty=format:'%s' -30`
+- Recent commits with bodies: !`git log --pretty=format:'%H%n%s%n%b%n---' -5`
 
-**Note**: If the branch name contains a Jira issue (e.g., ABC-123) or GitHub issue (e.g., GH-456), automatically include it in the commit message.
+**Note**: If the branch name contains a Jira (e.g., `ABC-123`) or GitHub issue (e.g., `GH-456`), include it in the commit message **only if** the repo's history shows that pattern.
 
-## What This Command Does
+## Step 1 — Detect the Repo's Convention (do this first)
 
-1. Unless specified with --no-verify, automatically runs pre-commit checks:
-2. Checks the current branch name and extracts any Jira (ABC-123) or GitHub (GH-456) issue references
-3. Checks which files are staged with git status
-4. If 0 files are staged, automatically adds all modified and new files with git add
-5. Performs a git diff to understand what changes are being committed
-6. Analyzes the diff to determine if multiple distinct logical changes are present
-7. If multiple distinct changes are detected, suggests breaking the commit into multiple smaller commits
-8. For each commit (or the single commit if not split), creates a commit message including any detected issue references
+Before writing anything, analyze the `git log --pretty=format:'%s' -30` output above and infer:
 
-## Branch Naming for Issue Linking
+1. **Prefix vocabulary.** What verbs/types does this repo use?
+   - Conventional commits → `feat:`, `fix:`, `docs:`, `refactor:`, `chore:`, `test:`, `build:`, `ci:`, `perf:`, `style:`
+   - Chezmoi/dotfiles style → `add:`, `update:`, `fix:`, `cut:`
+   - Imperative, no prefix → `Add X`, `Fix Y`, `Refactor Z`
+   - Gitmoji → `:sparkles: add X`, `:bug: fix Y`
+   - Ticket-prefixed → `[ABC-123] …`
+   - None / ad-hoc → no consistent pattern
+2. **Scope syntax.** Does the repo use `type(scope): …` (e.g., `update(debian):`, `fix(auth):`)? If so, what scopes appear?
+3. **Subject style.**
+   - Case: lowercase first word, Sentence case, or Title Case?
+   - Ending: trailing period or not?
+   - Length: typically under 50 chars, under 72, or longer?
+   - Structure: starts with a verb (`add`), a noun (`bringme keybindings`), or a sentence?
+4. **Body style.**
+   - Always, sometimes, or never present?
+   - Wrapped at ~72 columns?
+   - Bullet points, prose, or both?
+   - Explains **why** vs. **what**?
+5. **Footers.** Does history include `Co-Authored-By:`, `Signed-off-by:`, `Refs:`, `Closes #…`? Do **not** add footers the repo doesn't already use.
 
-When working on a branch named with an issue reference, the commit message will automatically include it:
+**Match what you find.** Do not impose conventional commits on a repo that doesn't use them. Do not add `feat:` to a repo that writes `add:`. Do not add a body to a repo whose subjects stand alone.
 
-- **Jira issues**: Branch names like `feature/ABC-123-add-auth` or `fix/PROJ-456-memory-leak` will extract `ABC-123` or `PROJ-456`
-- **GitHub issues**: Branch names like `feature/GH-789-add-validation` will extract `GH-789`
-- **Format in commit**: Issue references are appended to the commit message (e.g., `feat: add user authentication [ABC-123]` or `fix: resolve memory leak (GH-789)`)
+If the repo has **no consistent pattern**, default to Conventional Commits (see reference below) and keep the subject under 72 chars.
 
-## Best Practices for Commits
+## Step 2 — Commit Workflow
 
-- **Verify before committing**: Ensure code is linted, builds correctly, and documentation is updated
-- **Atomic commits**: Each commit should contain related changes that serve a single purpose
-- **Split large changes**: If changes touch multiple concerns, split them into separate commits
-- **Conventional commit format**: Use the format <type>: <description> where type is one of:
-  - feat: A new feature
-  - fix: A bug fix
-  - docs: Documentation changes
-  - style: Code style changes (formatting, etc)
-  - refactor: Code changes that neither fix bugs nor add features
-  - perf: Performance improvements
-  - test: Adding or fixing tests
-  - chore: Changes to the build process, tools, etc.
-  - build: Changes that affect the build system or external dependencies
-  - ci: Changes to CI configuration files and scripts
-  - infra: Changes related to deployment infra such as AWS, Render, Digital Ocean, etc.
-  - dev: Developer experience improvements
+1. Unless `--no-verify` is passed, respect the repo's pre-commit hooks.
+2. Extract any Jira/GH issue from the branch name **only if** the repo's history shows issue references.
+3. Check staged files with `git status`.
+4. If 0 files are staged, stage modified and new files — prefer naming files explicitly over `git add -A` when sensitive files (`.env`, credentials) could be in the tree.
+5. Review the diff to understand the change.
+6. Decide if the diff represents **one logical change** or several. If several (unrelated concerns, mixed types, different directories), offer to split into atomic commits. For small repos (dotfiles, configs, single-purpose tools) a single commit is usually correct.
+7. Write the commit message in the detected style.
+8. Review the staged diff against the message — does the subject accurately describe what changed?
 
-## Guidelines for Splitting Commits
+## Known Convention Patterns (reference)
 
-When analyzing the diff, consider splitting commits based on these criteria:
+Use these as templates once Step 1 has identified which one applies. Do **not** pick one arbitrarily.
 
-1. **Different concerns**: Changes to unrelated parts of the codebase
-2. **Different types of changes**: Mixing features, fixes, refactoring, etc.
-3. **File patterns**: Changes to different types of files (e.g., source code vs documentation)
-4. **Logical grouping**: Changes that would be easier to understand or review separately
-5. **Size**: Very large changes that would be clearer if broken down
+### Pattern A — Conventional Commits
 
-## Examples
+```
+<type>(<optional scope>): <description>
 
-Good commit messages:
+[optional body]
 
-- feat: add user authentication system
-- fix: resolve memory leak in rendering process
-- docs: update API documentation with new endpoints
-- refactor: simplify error handling logic in parser
-- fix: resolve linter warnings in component files
-- refactor: simplify error handling logic in parser (GH-101)
-- chore: improve developer tooling setup process
-- feat: implement business logic for transaction validation
-- fix: address minor styling inconsistency in header
-- fix: patch critical security vulnerability in auth flow
-- style: reorganize component structure for better readability
-- fix: remove deprecated legacy code
-- feat: add input validation for user registration form
-- ci: resolve failing CI pipeline tests
-- feat: implement analytics tracking for user engagement
-- fix: strengthen authentication password requirements
-- feat: improve form accessibility for screen readers
-- infra: update deployment scripts for new server setup
-- infra: add Redis caching to AWS CDK
-- dev: enhance developer experience with improved logging
-- dev: add Claude command for better testing
-- build: update dependencies to latest versions
+[optional footer(s)]
+```
 
-Example of splitting commits:
+Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `chore`, `build`, `ci`, `infra`, `dev`.
 
-- First commit: feat: add new solc version type definitions
-- Second commit: docs: update documentation for new solc versions
-- Third commit: chore: update package.json dependencies
-- Fourth commit: feat: add type definitions for new API endpoints
-- Fifth commit: feat: improve concurrency handling in worker threads
-- Sixth commit: fix: resolve linting issues in new code
-- Seventh commit: test: add unit tests for new solc version features
-- Eighth commit: fix: update dependencies with security vulnerabilities
+Two non-standard types worth calling out explicitly (used often in this user's DevOps / dev-environment work):
+
+- **infra** — deployment infrastructure changes: AWS/GCP/Render/DO resources, Terraform, CDK, Kubernetes manifests, CI runners, DNS, secrets management. Example: `infra: add Redis caching to AWS CDK`.
+- **dev** — developer-experience changes: tooling updates, local dev environment tweaks, editor/IDE config, shell/workflow improvements, internal scripts that only run on developer machines. Example: `dev: add Claude command for better testing`.
+
+Example: `feat(auth): add password strength validation`
+
+### Pattern B — Chezmoi / Dotfiles Verbs
+
+```
+<verb>(<optional scope>): <lowercase description, no period>
+```
+
+Verbs:
+
+- **add** — new config, new tool, new script, new alias, new keybinding
+- **update** — modify existing config, change settings, tweak behavior
+- **fix** — correct something broken
+- **cut** — remove config, disable a tool, delete a script or alias
+
+Common scopes: `(debian)`, `(ghostty)`, `(atuin)`, `(ssh)`, `(git)`. Omit scope when the change is general.
+
+Examples from real history:
+
+```
+add: mongodb-tools installer (mongodb-org-tools + mongodb-atlas)
+update: starship directory styling for repo roots
+fix: make Super+slash reliably bring Chromium to workspace
+cut: remove TODO-snap-migration.md
+update(debian): bringme.sh and move-to-workspace.sh to use window-tools D-Bus extension
+fix(debian): use chezmoi.homeDir template for GNOME shortcut paths
+```
+
+Bodies are used when the **why** is non-obvious — e.g., explaining a workaround, a root cause, or a migration step. Keep the subject under 72 chars and wrap the body at ~72.
+
+### Pattern C — Plain Imperative
+
+```
+Add X to Y
+Fix race condition in foo()
+Refactor parser into three passes
+```
+
+Title Case or sentence case, no prefix, no period. Common in Linux kernel, older Git history, many Go projects.
+
+### Pattern D — Ad-hoc
+
+No detectable pattern. Fall back to Conventional Commits (Pattern A).
+
+## Subject-Line Rules (apply to all patterns)
+
+- Focus on **what changed** in a way that helps a reader skimming `git log --oneline`.
+- Be specific: `fix: resolve memory leak in render loop` beats `fix: bug`.
+- Prefer the imperative mood when the detected pattern allows it (`add X`, not `added X` or `adds X`).
+- Don't restate the file name unless it's the clearest framing.
+- Never include `Claude`, `AI`, or tool names unless the change is literally about those tools.
+
+## Body Rules
+
+- Only add a body if the repo's history shows bodies **and** the change needs explanation.
+- Explain **why**, not **what** — the diff shows the what.
+- Wrap at ~72 columns.
+- Bullet points are fine when the change has multiple discrete parts.
+
+## Footer Rules
+
+- Match the repo. If `git log` shows `Co-Authored-By:` or `Signed-off-by:`, include them. If not, don't add them.
+- For AI attribution specifically: only add a `Co-Authored-By: Claude …` line if the repo's existing history already includes similar attribution. Many repos (including most dotfiles) explicitly do not.
+
+## Splitting Commits
+
+Split when the diff mixes:
+
+1. **Different concerns** — unrelated parts of the codebase
+2. **Different change types** — e.g., a feature + a refactor + a doc update
+3. **Different file categories** — source vs. generated vs. config
+4. **Reviewability** — one reviewer shouldn't have to hold three contexts at once
+
+Do **not** split when:
+
+- The change is a single logical unit across several files (common in dotfiles, refactors, schema migrations)
+- Splitting would produce commits that don't build / pass tests on their own
 
 ## Command Options
 
-- --no-verify: Skip running the pre-commit checks (lint, build, generate:docs)
+- `--no-verify`: Skip pre-commit hooks (use sparingly; investigate failures first)
+- `--amend`: Amend the previous commit instead of creating a new one (only when the previous commit hasn't been pushed or the user explicitly asks)
 
 ## Important Notes
 
-- By default, pre-commit checks will run to ensure code quality
-- If these checks fail, you'll be asked if you want to proceed with the commit anyway or fix the issues first
-- If specific files are already staged, the command will only commit those files
-- If no files are staged, it will automatically stage all modified and new files
-- The commit message will be constructed based on the changes detected
-- Before committing, the command will review the diff to identify if multiple commits would be more appropriate
-- If suggesting multiple commits, it will help you stage and commit the changes separately
-- Always reviews the commit diff to ensure the message matches the changes
+- **Never commit without explicit user approval** unless the user has already said "commit" in this turn. Showing `git diff --staged` and waiting is the default.
+- Review the staged diff against the proposed message before committing.
+- If pre-commit hooks fail, fix the underlying issue rather than bypassing with `--no-verify`.
+- Never force-push, reset hard, or amend published commits without explicit confirmation.
