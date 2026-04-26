@@ -1,95 +1,85 @@
 ---
 name: deps-upgrade-report
-description: Generate a dependency upgrade report for outdated packages. Detects the project's package managers (uv/Python and npm/Node), checks for outdated direct dependencies, fetches changelogs from the internet, and produces a skimmable markdown report with breaking change warnings. Use when the user asks to "check for outdated dependencies", "dependency upgrade report", "what needs updating", "review dependency updates", "monthly dependency audit", or any variation of checking/reporting on outdated packages.
+description: Generate a dependency upgrade report for outdated packages and pinned GitHub Actions. Detects the project's dependency surfaces (uv/Python, npm/Node, and `.github/workflows/` action pins) and runs one agent per detected surface in parallel — each gathers outdated entries, fetches changelogs/release notes, assesses breaking changes against the codebase, and writes a skimmable markdown report. Use when the user asks to "check for outdated dependencies", "dependency upgrade report", "what needs updating", "review dependency updates", "update github actions", "outdated workflows", "monthly dependency audit", or any variation of checking/reporting on outdated packages or actions. Covers Python (uv), Node (npm), and GitHub Actions only.
 ---
 
 # Dependency Upgrade Report
 
-Generate comprehensive, skimmable markdown reports for outdated direct dependencies. Supports Python (uv) and Node (npm) projects. Produces separate report files per package manager.
+Generate skimmable markdown reports for outdated direct dependencies and pinned GitHub Actions. The slow step is release-note research — one agent per detected surface runs **in parallel** so a project that uses all three doesn't serialize.
+
+## Architecture
+
+```
+detect-managers.sh
+        │
+        ├──▶ Agent: Python   ──▶ tmp/DEPS_UPGRADE_REPORT_PYTHON.md
+        │      (gather → filter → research → assess → write)
+        │
+        ├──▶ Agent: Node     ──▶ tmp/DEPS_UPGRADE_REPORT_NODE.md
+        │      (gather → filter → research → assess → write)
+        │
+        └──▶ Agent: Actions  ──▶ tmp/DEPS_UPGRADE_REPORT_ACTIONS.md
+               (gather → dedupe → research → assess → write)
+                        ▲
+                        │
+                concurrent — single message, multiple Agent calls
+```
 
 ## Workflow
 
-1. Detect package managers
-2. Gather outdated dependencies
-3. Filter to direct dependencies only
-4. Research changelogs for each dependency
-5. Identify breaking changes and assess project impact
-6. Generate report(s)
+### Step 1: Detect dependency surfaces
 
-## Step 1: Detect Package Managers
+Run from the project root:
 
-Check the project root for configuration files:
+```bash
+<skill_dir>/scripts/detect-managers.sh
+```
 
-- **Python/uv**: `pyproject.toml` exists AND `uv` is available on PATH
-- **Node/npm**: `package.json` exists AND `npm` is available on PATH
+Output is JSON: `{"python":true,"node":false,"actions":true}`. A surface counts as detected only when **both** its config and its required CLI are present:
 
-Run for whichever managers are detected. If neither is found, inform the user.
+- **python**: `pyproject.toml` exists AND `uv` is on PATH
+- **node**: `package.json` exists AND `npm` is on PATH
+- **actions**: `.github/workflows/` exists with at least one `.yml`/`.yaml` AND `gh` is on PATH
 
-## Step 2: Gather Outdated Dependencies
+If none are detected, tell the user and stop. The fan-out scales to whatever subset is detected — one, two, or three agents.
 
-### Python (uv)
+`<skill_dir>` is the absolute path to this skill's directory — capture it now (e.g. via `realpath` of the SKILL.md path) so it can be passed into agent prompts.
 
-Run: `uv tree --outdated --all-groups --depth 2`
+### Step 2: Spawn one agent per detected surface — in parallel
 
-This shows the full dependency tree with outdated markers. Parse the output to identify packages with version mismatches.
+**Critical:** issue all Agent tool calls in a **single message** with multiple tool-use blocks so they execute concurrently. Issuing them sequentially defeats the whole point of this skill.
 
-### Node (npm)
+Use `subagent_type: general-purpose` for each. Spawned agents inherit no context from this conversation, so each prompt must be fully self-contained — pass absolute paths, not relative ones.
 
-Run: `npm outdated --json`
+**Prompt template (substitute `<surface>` with `Python` | `Node` | `Actions`, lowercase the workflow filename, and uppercase the report filename):**
 
-This returns a JSON object keyed by package name with `current`, `wanted`, and `latest` versions.
+> You are running the **<surface>** half of the deps-upgrade-report skill.
+>
+> Project root: `<absolute project path>`
+> Skill directory: `<skill_dir>`
+>
+> Read and follow `<skill_dir>/references/<surface-lower>-workflow.md` exactly. It contains the full procedure: gather outdated entries, research release notes (preferring `gh release view` for GitHub-hosted projects), assess breaking-change risk against the codebase/workflows, and write `tmp/DEPS_UPGRADE_REPORT_<SURFACE-UPPER>.md` using the format in `<skill_dir>/references/report-template.md`.
+>
+> When done, return a one-paragraph summary: counts per group, number of breaking changes flagged, the absolute path to the report (or "no upgrades needed"), and any `tmp/` gitignore warning.
 
-## Step 3: Filter to Direct Dependencies Only
+### Step 3: Aggregate
 
-Only report on dependencies that are **directly declared** by the project:
+When all spawned agents return, write a brief top-level summary for the user listing each report file, the per-group outdated counts, and whether breaking changes were flagged. Surface any `tmp/` gitignore warnings.
 
-- **Python**: Read `pyproject.toml` and extract package names from `[project.dependencies]`, `[project.optional-dependencies.*]`, and all `[dependency-groups.*]` sections. Map these to the dependency groups they belong to (e.g., "main", "dev", "test").
-- **Node**: Read `package.json` and extract package names from `dependencies`, `devDependencies`, `peerDependencies`, and `optionalDependencies`. Map these to their respective groups.
+If an agent reported "no upgrades needed", reflect that — don't pretend a missing file is an error.
 
-Discard any outdated transitive dependencies not directly declared.
+## Bundled resources
 
-## Step 4: Research Changelogs
+### Reference files
+- **`references/python-workflow.md`** — Full procedure for the Python/uv agent
+- **`references/node-workflow.md`** — Full procedure for the Node/npm agent
+- **`references/actions-workflow.md`** — Full procedure for the GitHub Actions agent
+- **`references/report-template.md`** — Output format all agents must match
 
-For each outdated direct dependency, use web search to find the changelog or release notes. Typical sources:
+### Scripts
+- **`scripts/detect-managers.sh`** — Emits JSON of detected surfaces
+- **`scripts/list-direct-deps-python.py`** — Extracts direct deps from `pyproject.toml`, grouped by `main` / `optional:*` / dependency-group name
+- **`scripts/list-direct-deps-node.sh`** — Extracts direct deps from `package.json`, grouped by `dependencies` / `devDependencies` / `peerDependencies` / `optionalDependencies`
+- **`scripts/list-direct-actions.py`** — Extracts third-party `owner/repo@ref` pins from `.github/workflows/*.y*ml`, grouped by workflow file
 
-- GitHub releases page (most common)
-- CHANGELOG.md in the repository
-- PyPI/npm package page linking to release notes
-- Read the Docs or official documentation
-
-Extract the relevant entries between the current version and the latest version. Summarize concisely but include enough detail to skim. If a changelog cannot be found, note it as "Changelog not found" with a link to the package's homepage.
-
-## Step 5: Identify Breaking Changes
-
-Scan the changelog entries for:
-
-- Major version bumps (semver)
-- Entries explicitly marked as "BREAKING", "Breaking Changes", or "Migration"
-- Deprecation removals
-- API signature changes
-
-For each breaking change found, assess whether it could affect the current project by:
-
-1. Searching the codebase for usage of the affected API/feature
-2. Noting whether the project uses the changed functionality
-
-## Step 6: Generate Report
-
-Output separate reports per package manager:
-
-- **Python**: `tmp/DEPS_UPGRADE_REPORT_PYTHON.md`
-- **Node**: `tmp/DEPS_UPGRADE_REPORT_NODE.md`
-
-If only one package manager is detected, still use the suffixed filename for consistency.
-
-Create the `tmp/` directory if it doesn't exist.
-
-Use the report template in [references/report-template.md](references/report-template.md) for the exact output format.
-
-### Key formatting rules
-
-- Group dependencies by their declaration group (e.g., main, dev, test)
-- Include the full changelog excerpt inline so the user can skim one file
-- Breaking changes section goes at the TOP, before the per-group sections
-- Always include clickable links to changelogs
-- Use collapsible `<details>` blocks for long changelog excerpts (more than ~30 lines)
+The scripts are deterministic — invoke them rather than re-deriving their logic in the agent.
