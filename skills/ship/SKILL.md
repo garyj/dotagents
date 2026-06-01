@@ -6,7 +6,10 @@ disable-model-invocation: true
 
 # Ship: push → PR → CI + bot reviews → skeptical triage
 
-Optional argument (branch name / PR title override): $ARGUMENTS
+Optional argument — **steering hints** for the synthesized PR title and body
+(e.g. "emphasize the Django-Allauth MFA change", "this is a hotfix for X",
+"downplay the dep bump, the real story is the schema change"). Never treated
+as a literal title or branch name: $ARGUMENTS
 
 This skill takes committed work, gets it in front of GitHub's CI and whatever
 automated code reviewers are configured on the repo, then hands you back a
@@ -22,6 +25,22 @@ picked up automatically, never silently dropped.
 Run every command yourself (`git`, `gh`). Do not rely on shell preprocessing —
 this skill is shared across agents. **Never edit code in this skill.** It ends
 with a report and a full stop.
+
+## Authorization — push is pre-approved
+
+This skill is `disable-model-invocation: true` — every invocation is the user
+running `/ship` themselves. **That is the authorization to push.** Do not
+pause in Phase 1 to ask "should I push?" or "ready to push?" — just push and
+announce as you go. Long unattended runs are expected: the user kicks off
+ship, walks away, and comes back to a finished triage report. Sitting there
+hours later asking permission to do the thing the skill exists to do is the
+failure mode to avoid.
+
+Still pause (or stop) for:
+- **Non-fast-forward / protected-branch rejection** on push — stop and report
+  the exact error. Never resolve with `--force` or `--force-with-lease`.
+- **Uncommitted changes** in the working tree — Phase 0 already handles this:
+  stop, report, suggest the `commit` skill. Don't auto-commit and don't stash.
 
 ## Phase 0 — Preflight and state detection
 
@@ -44,8 +63,7 @@ with a report and a full stop.
      `origin/<default>`: create a feature branch so you never push straight to
      the protected branch. Derive a slug from the most recent commit subject
      (strip any `type:`/`type(scope):` prefix, lowercase, non-alphanumeric →
-     `-`, collapse repeats, trim, cap ~50 chars); if `$ARGUMENTS` looks like a
-     branch name, prefer it. Then:
+     `-`, collapse repeats, trim, cap ~50 chars). Then:
      ```
      git switch -c <branch>
      git branch -f <default> origin/<default>   # keep local default clean
@@ -60,19 +78,100 @@ with a report and a full stop.
 
 ## Phase 1 — Push
 
-`git push -u origin HEAD`. If the remote rejected it (non-fast-forward,
-protected branch, etc.), stop and report the exact error — do not force-push.
+`git push -u origin HEAD` — no confirmation prompt; see Authorization above.
+If the remote rejected it (non-fast-forward, protected branch, etc.), stop
+and report the exact error — do not force-push.
 
 ## Phase 2 — Open or reuse the PR
 
-Check first: `gh pr view --json number,url,state,isDraft`.
+Check first: `gh pr view --json number,url,state,isDraft,title,body`.
 
 - If an **open** PR already exists for this branch, reuse it (the push above
-  already updated it). Note the PR number/URL.
-- Otherwise create one against the default branch:
-  `gh pr create --fill --base <default>` (use `$ARGUMENTS` as the title if it
-  reads like a title rather than a branch name). `--fill` derives title/body
-  from the commits, which matches how the user already writes messages.
+  already updated it). Note the PR number/URL. **Do not rewrite the existing
+  title or body** — the user may have edited them, and ship is not a "rewrite
+  my PR" tool. Move on.
+- Otherwise, create one against the default branch with a **synthesized
+  title and body** (see below). **Never use `gh pr create --fill`** — with
+  multiple commits it uses the branch name as the title and dumps commit
+  subjects as bullets, discarding the rich context in your commit bodies.
+
+### Synthesizing the title and body
+
+Gather the commit log on this branch in full (subject + body for every commit):
+
+```
+git log <default>..HEAD --reverse --pretty=format:'=== %H ===%n%s%n%n%b%n'
+```
+
+Sample the repo's commit-message style so the title matches house convention:
+
+```
+git log <default> --pretty=format:'%s' -30
+```
+
+Then synthesize a title and body that match the schema below. Fold
+`$ARGUMENTS` in as steering — emphasis hints, what to lead with, framing,
+caveats to call out — not as a literal title.
+
+**Title** (≤72 chars):
+- Mirror the repo's commit-message convention as observed in the sample.
+  If the log uses `type:` or `type(scope):` prefixes (e.g. `chore(deps):`,
+  `fix(build):`, `infra:`), use the same shape. Lowercase prefix.
+- Lead with the **dominant theme** of the branch, not a laundry list. If
+  there's a clear hero commit and the rest is supporting, name the hero.
+- For a **single-commit PR**, use that commit's headline verbatim — it is
+  almost always already the right shape.
+- No trailing period. No emoji unless `$ARGUMENTS` explicitly asks.
+
+**Body** — exactly these sections, in this order:
+
+```
+## Summary
+
+<1–3 sentences of prose. What this branch does and why. Pull the "why"
+from the commit bodies; do not invent motivation that isn't there.>
+
+## Changes
+
+- <synthesized theme — combine related commits into one bullet>
+- <synthesized theme>
+- …
+
+## Verification
+
+<Only include this section if the commit bodies mention concrete checks
+the user actually ran (e.g. `chezmoi diff` clean, `collectstatic` clean,
+full test run, manual browser pass, byte-identical artifact comparison).
+Surface those checks as bullets. If nothing verifiable is in the commits,
+**omit the section entirely** — do not fabricate a test plan.>
+```
+
+Body rules:
+- For a **single-commit PR**, `## Summary` alone is usually enough; omit
+  `## Changes` (it would duplicate the title) unless the one commit covered
+  multiple distinct themes.
+- Bullets under `## Changes` are **synthesized**, not copied commit
+  subjects. Combine related commits into one bullet; drop noise. The goal
+  is for a reviewer to scan the bullets and know what surface area changed,
+  not to recap the commit log line-for-line.
+- Keep the whole body **under ~25 lines**. Reviewers scan; they don't read.
+- Markdown only. No emoji unless `$ARGUMENTS` asks.
+
+Create the PR with a HEREDOC so newlines survive intact:
+
+```
+gh pr create --base <default> --title "<synthesized title>" --body "$(cat <<'EOF'
+## Summary
+
+<prose>
+
+## Changes
+
+- <bullet>
+- <bullet>
+EOF
+)"
+```
 
 Record `<pr>` (number) and the PR URL for the report.
 
