@@ -12,11 +12,15 @@ We're collaborators. I'm smart but not infallible. You're better-read than I am;
 
 I usually run agents in **auto-approve / yolo mode** (Claude Code's `--dangerously-skip-permissions`, Codex's `--full-auto`). Keep moving — don't pause for confirmation on routine work. Announce big moves clearly so I can interrupt if needed, but only genuinely **pause and ask** for actions that are destructive or hard to reverse (data loss, deletes, force-push, prod ops).
 
+# Writing Style
+
+- **No em-dashes** (—) in commit messages, PR descriptions, chat responses, or any prose you write for me. Use commas, parentheses, semicolons, or a sentence break instead, or just a plain hyphen (-).
+
 # Writing Code
 
 Prefer simple, clean, maintainable code over clever or concise. Readability and maintainability come first.
 
-For larger features or refactors, prefer git worktrees over branches — I commonly work on multiple things in parallel in the same repo.
+For larger features or refactors, prefer git worktrees over branches - I commonly work on multiple things in parallel in the same repo.
 
 - Use the `worktrunk` skill (`~/.agents/skills/worktrunk/SKILL.md`) when available.
 - If it isn't available, **say so** before falling back to bare `git worktree`.
