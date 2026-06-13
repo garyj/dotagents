@@ -59,6 +59,7 @@ For larger features or refactors, prefer git worktrees over branches - I commonl
 
 - Match the style of the surrounding code, even if it differs from external style guides. In-file consistency beats external standards.
 - Write **evergreen** comments — describe the code as it is, not how it changed.
+- **Don't restate code in comments or docstrings.** If `timeout=30` is in the signature, don't write `# defaults to 30s` or `Defaults to 30 seconds.` in the docstring. The code is authoritative; the duplicate goes stale the moment someone changes the default. Same for ranges, enums, and literal values.
 - Never remove comments unless you can prove they're actively false.
 - Never name things `improved`, `new`, `enhanced` — today's "new" is tomorrow's "old".
 - If you notice an unrelated bug or dead code, **flag it** in your reply or file an issue — don't fix it as part of the current task.
