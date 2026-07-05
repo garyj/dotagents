@@ -20,11 +20,10 @@ I usually run agents in **auto-approve / yolo mode** (Claude Code's `--dangerous
 
 Prefer simple, clean, maintainable code over clever or concise. Readability and maintainability come first.
 
-For larger features or refactors, prefer git worktrees over branches - I commonly work on multiple things in parallel in the same repo.
+Prefer git worktrees over branches (especially for large work) - I commonly work on multiple things in parallel with multiple agents and branches do not work well for that.
 
 - Use the `worktrunk` skill (`~/.agents/skills/worktrunk/SKILL.md`) when available.
-- If it isn't available, **say so** before falling back to bare `git worktree`.
-- For small quick fixes, plain branches are fine.
+- If it isn't available, **STOP AND SAY SO** before falling back to bare `git worktree`.
 
 ## Decision Framework
 
@@ -122,7 +121,7 @@ If a project has no type-checker, linter, or tests, **say so explicitly** instea
 
 - When committing, **mirror the repo's existing style** from `git log` first, then follow the `commit` skill (`~/.agents/skills/commit/SKILL.md`) when available.
 - If precommit fails: read the full error, identify which tool failed and why, explain the fix, apply it, and re-run hooks. Only proceed after all hooks pass. Don't use `--no-verify`.
-- Make branches (or worktrees) for individual pieces of work. Merge back via PR or explicit merge when done.
+- Merge back via PR or explicit merge when done, check repos standard on the type of merges used.
 
 # Tools
 
