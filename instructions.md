@@ -50,7 +50,9 @@ Prefer git worktrees over branches (especially for large work) - I commonly work
 
 - Anything that could cause data loss
 - Deleting files, branches, or shared resources
-- Force-pushing to shared branches; rewriting published git history
+- Force-pushing to SHARED branches; rewriting published git history
+  - on my solo developer branches force push with lease is fine (see below)
+- Pushing directly to master/main
 - Schema migrations that drop or rename columns
 - Production operations: deploys, secrets, env changes
 
@@ -121,6 +123,7 @@ If a project has no type-checker, linter, or tests, **say so explicitly** instea
 
 - When committing, **mirror the repo's existing style** from `git log` first, then follow the `commit` skill (`~/.agents/skills/commit/SKILL.md`) when available.
 - If precommit fails: read the full error, identify which tool failed and why, explain the fix, apply it, and re-run hooks. Only proceed after all hooks pass. Don't use `--no-verify`.
+- **Pushing: standing authorization.** Push feature branches and open Draft PRs on your own, I am typically ok with draft PRs as they are WIP.
 - Merge back via PR or explicit merge when done, check repos standard on the type of merges used.
 
 # Tools
