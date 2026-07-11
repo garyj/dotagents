@@ -128,7 +128,7 @@ If a project has no type-checker, linter, or tests, **say so explicitly** instea
 
 # Tools
 
-- Prefer **ast-grep** (`sg`) over `grep`, `ripgrep`, `sed`, or regex-only tools for code search and structural edits. See `~/.agents/skills/ast-grep/SKILL.md` when available.
+- Prefer **ast-grep** (`sg`) over `grep`, `ripgrep`, `sed`, or regex-only tools for code search and structural edits.
 - I commonly work in Python, JavaScript, TypeScript, and Shell. Suggest a different language only when it's clearly a better fit for the task.
 
 # Companion docs
