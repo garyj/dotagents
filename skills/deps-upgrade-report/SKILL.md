@@ -1,6 +1,6 @@
 ---
 name: deps-upgrade-report
-description: Generate a dependency upgrade report for outdated packages and pinned GitHub Actions. Detects the project's dependency surfaces (uv/Python, npm/Node, and `.github/workflows/` action pins) and runs one agent per detected surface in parallel — each gathers outdated entries, fetches changelogs/release notes, assesses breaking changes against the codebase, and writes a skimmable markdown report. Use when the user asks to "check for outdated dependencies", "dependency upgrade report", "what needs updating", "review dependency updates", "update github actions", "outdated workflows", "monthly dependency audit", or any variation of checking/reporting on outdated packages or actions. Covers Python (uv), Node (npm), and GitHub Actions only.
+description: Generate a dependency upgrade report for outdated packages and pinned GitHub Actions. Detects the project's dependency surfaces (uv/Python, npm/Node, and GitHub Actions pins in workflows and composite/local action definitions) and runs one agent per detected surface in parallel — each gathers outdated entries, fetches changelogs/release notes, assesses breaking changes against the codebase, and writes a skimmable markdown report. Use when the user asks to "check for outdated dependencies", "dependency upgrade report", "what needs updating", "review dependency updates", "update github actions", "outdated workflows", "monthly dependency audit", or any variation of checking/reporting on outdated packages or actions. Covers Python (uv), Node (npm), and GitHub Actions only.
 ---
 
 # Dependency Upgrade Report
@@ -39,7 +39,7 @@ Output is JSON: `{"python":true,"node":false,"actions":true}`. A surface counts 
 
 - **python**: `pyproject.toml` exists AND `uv` is on PATH
 - **node**: `package.json` exists AND `npm` is on PATH
-- **actions**: `.github/workflows/` exists with at least one `.yml`/`.yaml` AND `gh` is on PATH
+- **actions**: `gh` is on PATH AND at least one of: a `.yml`/`.yaml` in `.github/workflows/`, an `action.y*ml` under `.github/actions/`, or an `action.y*ml` at the repo root
 
 If none are detected, tell the user and stop. The fan-out scales to whatever subset is detected — one, two, or three agents.
 
@@ -80,6 +80,6 @@ If an agent reported "no upgrades needed", reflect that — don't pretend a miss
 - **`scripts/detect-managers.sh`** — Emits JSON of detected surfaces
 - **`scripts/list-direct-deps-python.py`** — Extracts direct deps from `pyproject.toml`, grouped by `main` / `optional:*` / dependency-group name
 - **`scripts/list-direct-deps-node.sh`** — Extracts direct deps from `package.json`, grouped by `dependencies` / `devDependencies` / `peerDependencies` / `optionalDependencies`
-- **`scripts/list-direct-actions.py`** — Extracts third-party `owner/repo@ref` pins from `.github/workflows/*.y*ml`, grouped by workflow file
+- **`scripts/list-direct-actions.py`** — Extracts third-party `owner/repo@ref` pins from workflows, composite/local action definitions (following `uses: ./...` references), and reusable-workflow refs, grouped by source file path
 
 The scripts are deterministic — invoke them rather than re-deriving their logic in the agent.

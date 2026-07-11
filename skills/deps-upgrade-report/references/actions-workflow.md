@@ -10,25 +10,28 @@ Run the helper:
 <skill_dir>/scripts/list-direct-actions.py
 ```
 
-It emits JSON keyed by workflow filename, with each entry recording `action`, `ref`, source `line`, and any inline `comment`:
+It scans workflow files (`.github/workflows/*.y*ml`), composite/local action definitions (`.github/actions/**/action.y*ml` and a repo-root `action.y*ml`), and any other local action reached via `uses: ./...`. It emits JSON keyed by repo-relative file path, with each entry recording `action`, `ref`, source `line`, and any inline `comment`:
 
 ```json
 {
-  "ci.yaml": [
+  ".github/workflows/ci.yaml": [
     {"action": "actions/checkout", "ref": "v6", "line": 42},
     {"action": "actions/setup-python", "ref": "v6", "line": 51}
   ],
-  "release-deployment.yaml": [
+  ".github/workflows/release-deployment.yaml": [
     {"action": "googleapis/release-please-action", "ref": "v4", "line": 18}
+  ],
+  ".github/actions/setup/action.yml": [
+    {"action": "astral-sh/setup-uv", "ref": "v7", "line": 11}
   ]
 }
 ```
 
-Local actions (`./...`) and Docker actions (`docker://...`) are skipped — only third-party `owner/repo@ref` references are returned.
+Docker actions (`docker://...`) are skipped. Local `uses: ./...` references are followed into their `action.yml` rather than reported as entries — the pins inside them show up under the composite file's own key. Reusable-workflow references (`uses: owner/repo/.github/workflows/x.yml@ref`) are included with `"type": "reusable-workflow"`, `action` set to `owner/repo`, and the workflow path in `"workflow"` — treat them like any other pinned action (research the `owner/repo` releases/tags).
 
 ## 2. Deduplicate to a unique action set
 
-Build a unique map of `owner/repo` -> `{refs_seen: set, used_in: [filename:line, ...]}`. Multiple workflows pinning the same action at the same ref are common — research each `owner/repo` once but report the per-workflow usage so the user knows what they'll be touching.
+Build a unique map of `owner/repo` -> `{refs_seen: set, used_in: [path:line, ...]}`. Multiple files pinning the same action at the same ref are common — research each `owner/repo` once but report the per-file usage (workflows and composite action files alike) so the user knows what they'll be touching.
 
 Classify each ref:
 
@@ -75,14 +78,14 @@ Scan release notes for:
 - Changed default runtime (Node 16 → Node 20, Node 20 → Node 22)
 - Removed sub-actions or path-based usages
 
-For each breaking change, search the workflows for usage of the affected feature:
+For each breaking change, search the workflows and composite action files for usage of the affected feature:
 
 ```bash
-grep -nE 'uses:\s*<owner>/<repo>' .github/workflows/*.y*ml
-grep -A 20 '<owner>/<repo>@' .github/workflows/*.y*ml | grep -E 'with:|<changed-input>'
+grep -rnE 'uses:\s*<owner>/<repo>' .github/workflows/ .github/actions/ action.y*ml 2>/dev/null
+grep -rA 20 '<owner>/<repo>@' .github/workflows/ .github/actions/ 2>/dev/null | grep -E 'with:|<changed-input>'
 ```
 
-Cite specific `workflow.yaml:line` references for any input/output the project actually uses. If the project does not pass the changed input or read the changed output, mark risk as Low.
+Cite specific `path:line` references for any input/output the project actually uses. If the project does not pass the changed input or read the changed output, mark risk as Low.
 
 **Runtime-version trap:** if the new major drops a Node runtime version that any self-hosted runner or runner image still uses, flag as blocking. For GitHub-hosted runners this is rarely an issue but worth a one-line check.
 
@@ -90,9 +93,9 @@ Cite specific `workflow.yaml:line` references for any input/output the project a
 
 Write `tmp/DEPS_UPGRADE_REPORT_ACTIONS.md` using the format in `<skill_dir>/references/report-template.md`, with these adaptations:
 
-- **Emit the Summary table first** — one row per **unique** outdated action (deduped by `owner/repo`, not per workflow file). Sort breaking-first then alphabetical (`Yes` rows, then `No` rows; alphabetical within each band). Columns: Action, Current → Latest, Breaking? (`Yes`/`No` — no `Hold` for Actions), **Used in** (comma-separated workflow filenames), Release notes (direct link to `https://github.com/<owner>/<repo>/releases`).
-- Then the **Breaking Changes & Warnings** section, citing the specific workflow files and lines that pass affected inputs.
-- Then **per-workflow-file detail sections** (`## ci.yaml Actions`, `## release-deployment.yaml Actions`, etc.). An action used in multiple workflows appears under each — the changelog excerpt can be in the first occurrence with later occurrences linking back ("See [ci.yaml](#ciyaml-actions) above").
+- **Emit the Summary table first** — one row per **unique** outdated action (deduped by `owner/repo`, not per source file). Sort breaking-first then alphabetical (`Yes` rows, then `No` rows; alphabetical within each band). Columns: Action, Current → Latest, Breaking? (`Yes`/`No` — no `Hold` for Actions), **Used in** (comma-separated source files — workflows and composite action files), Release notes (direct link to `https://github.com/<owner>/<repo>/releases`).
+- Then the **Breaking Changes & Warnings** section, citing the specific files and lines that pass affected inputs.
+- Then **per-source-file detail sections** (`## ci.yaml Actions`, `## .github/actions/setup/action.yml Actions`, etc.). An action used in multiple files appears under each — the changelog excerpt can be in the first occurrence with later occurrences linking back ("See [ci.yaml](#ciyaml-actions) above").
 - Use `<details>` blocks for changelog excerpts longer than ~30 lines.
 - Always include clickable links to the release page (`https://github.com/<owner>/<repo>/releases/tag/<tag>`).
 
@@ -103,7 +106,7 @@ If no outdated actions are found, do **not** write the report. Return the single
 ## Return value
 
 Return one paragraph summarising:
-- Counts per workflow file (e.g., "ci.yaml: 3 outdated, release-deployment.yaml: 1 outdated")
+- Counts per source file (e.g., "ci.yaml: 3 outdated, .github/actions/setup/action.yml: 4 outdated")
 - Number of unique actions that need upgrading (deduped across files)
 - Number of breaking changes flagged
 - Absolute path to the report (or "no upgrades needed")
