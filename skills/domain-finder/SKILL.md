@@ -3,9 +3,9 @@ name: domain-finder
 description: >-
   Discovers and checks availability of domain names suitable for this project.
   Analyzes the codebase to understand the project purpose, generates relevant
-  domain name suggestions, and uses whois/dig to verify availability.
-  Use when you need to find available domains for the project.
-allowed-tools: Read, Glob, Grep, Bash(whois:*), Bash(dig:*), Write
+  domain name suggestions, and uses RDAP with whois/dig confirmation to verify
+  availability. Use when you need to find available domains for the project.
+allowed-tools: Read, Glob, Grep, Bash(curl:*), Bash(whois:*), Bash(dig:*), Write
 ---
 
 # Domain Finder Agent
@@ -43,6 +43,8 @@ Generate domain name candidates using these strategies:
 **Relevant TLDs (prioritize):**
 
 - `.com` - Most recognized
+- `.com.au` - Australian businesses (always check for Australian-market products)
+- `.au` - Australian direct registration
 - `.io` - Tech/developer focus
 - `.app` - Web applications
 - `.dev` - Developer tools
@@ -56,20 +58,33 @@ Use the hint as the primary basis for domain generation, creating variations aro
 
 ### Phase 3: Check Domain Availability
 
-For each candidate domain, check availability using:
+For each candidate domain, check RDAP first. It gives a uniform machine-readable answer across most TLDs, unlike whois output which varies by registry.
 
 ```bash
-# Primary check - whois
-whois <domain> 2>/dev/null | grep -iE "(no match|not found|available|no data found|domain not found)"
-
-# Secondary check - dig for NS records
-dig +short NS <domain>
+# Primary check - RDAP (follow redirects; rdap.org proxies to the authoritative registry)
+curl -sL -o /dev/null -w "%{http_code}" https://rdap.org/domain/<domain>
 ```
 
 **Interpretation:**
 
-- Available: whois shows "No match" / "Not found" / "Available" AND dig returns no NS records
-- Taken: whois shows registrar info OR dig returns NS records
+- `200` - TAKEN. Definitive; no further checks needed.
+- `404` - Promising, but NOT proof of availability. Some TLDs (e.g. `.io`, `.co`) are missing from the RDAP bootstrap registry and return 404 for registered domains too. Confirm with whois and dig before declaring available.
+- Other codes or timeout - RDAP inconclusive; fall back to whois and dig.
+
+**Confirmation checks (required after a 404):**
+
+```bash
+# whois - availability indicators appear at the start of a line.
+# Do NOT match loose words like "available" mid-line; registry Terms of Use
+# boilerplate contains them and causes false positives on registered domains.
+whois <domain> 2>/dev/null | grep -iE "^(no match|not found|domain not found|no data found|no entries found|status:\s*free)"
+
+# dig - registered domains normally have NS delegation
+dig +short NS <domain>
+```
+
+- Available: RDAP returned 404 AND whois shows an availability indicator AND dig returns no NS records
+- Taken: RDAP returned 200, OR whois shows registrar info, OR dig returns NS records
 
 ### Phase 4: Output Results
 
