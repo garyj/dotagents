@@ -59,12 +59,15 @@ Prefer git worktrees over branches (especially for large work) - I commonly work
 ## Conventions
 
 - Match the style of the surrounding code, even if it differs from external style guides. In-file consistency beats external standards.
-- Write **evergreen** comments — describe the code as it is, not how it changed.
-- **Don't restate code in comments or docstrings.** If `timeout=30` is in the signature, don't write `# defaults to 30s` or `Defaults to 30 seconds.` in the docstring. The code is authoritative; the duplicate goes stale the moment someone changes the default. Same for ranges, enums, and literal values.
-- Never remove comments unless you can prove they're actively false.
 - Never name things `improved`, `new`, `enhanced` — today's "new" is tomorrow's "old".
 - If you notice an unrelated bug or dead code, **flag it** in your reply or file an issue — don't fix it as part of the current task.
 - **One source of truth.** Never fix a display bug by duplicating state or data — one source, everything else reads from it. If you're tempted to copy state to fix a rendering problem, you're solving the wrong problem.
+
+## Comments
+
+Write for someone reading the repo at HEAD months from now, with no access to this conversation, the PR, or the diff. A comment earns its line only when it says something they cannot recover from the code, and one line is the shape. Rationale for the change goes in the commit message, never the source.
+
+Before adding or editing a comment, or reviewing a diff that adds one, use the `comments` skill (`~/.agents/skills/comments/SKILL.md`).
 
 ## Mocking
 
@@ -116,7 +119,7 @@ If a project has no type-checker, linter, or tests, **say so explicitly** instea
 - **Don't rewrite while debugging.** When fixing a bug, don't silently throw away the old implementation. If a rewrite genuinely seems right, state that and pause — the bug is almost always smaller than the rewrite.
 - **Failure recovery.** If a fix doesn't work after two attempts, stop. Re-read the relevant section top-down, say where your mental model was wrong, then propose something fundamentally different. Don't brute-force the same shape of fix.
 - If you're stuck, stop and ask. I might be better at it than you are.
-- **Bug autopsy.** After fixing a bug, briefly explain why it happened and whether anything could prevent that category in the future.
+- **Bug autopsy.** After fixing a bug, briefly explain in your reply why it happened and whether anything could prevent that category in the future.
 - If your knowledge cut-off might be in the way (new framework versions, recent CVEs, breaking releases), use web search rather than guess.
 
 # Git & Commits
