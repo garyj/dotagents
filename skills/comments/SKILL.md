@@ -6,73 +6,74 @@ description: Rules for writing code comments. Use when adding or editing a comme
 # Comments
 
 Write for someone reading the repo at HEAD months from now, with no access to
-this conversation, the pull request, or the diff. Only one approach exists at
-HEAD: the one in the file.
+this conversation, the PR, or the diff. A comment earns its place only when it
+says something they cannot recover from the code.
 
-## The test
+Before writing one, try a better name, a smaller function, or a type. Comment
+only when none of those can carry it. In config files there is nothing to
+rename, so the bar is the sentence itself.
 
-Before writing a comment, ask: **does this say something the reader cannot
-recover from the code?** If names, types or structure already carry it, don't
-write it. If the name fails to carry it, fix the name.
+## NEVER
 
-## Never
+- NEVER: put more than one idea in a comment. One idea, one comment.
 
-**Narrate history.** "now", "previously", "no longer", "used to", "the new
-approach", "changed from", "per PR #123", "as discussed". These are meaningless
-at HEAD.
+- NEVER: narrate history. "now", "previously", "no longer", "used to",
+  "per PR #123". Only one approach exists at HEAD.
 
-```python
-# BAD:  We now intern types instead of cloning them.
-# GOOD: Interning avoids a clone on every lookup.
-```
+  ```text
+  # BAD:  We now intern types instead of cloning them.
+  # GOOD: Interning avoids a clone on every lookup.
+  ```
 
-**Address the reviewer.** A comment arguing your change is correct is aimed at
-whoever reads the PR, not whoever reads the file in a year.
+- NEVER: address the reviewer. A comment arguing your change is correct is
+  written for whoever reads the PR, not whoever reads the file in a year.
 
-```python
-# BAD:  This correctly handles the overload case from the bug report.
-# GOOD: Overloads match by arity before parameter types, so a partial-arity
-#       call cannot select the wrong candidate.
-```
+  ```text
+  # BAD:  This correctly handles the empty-list case from the bug report.
+  # GOOD: An empty list means the sync has not run yet, not that the user has
+  #       no records.
+  ```
 
-**Log a decision.** Why you picked an approach, what you rejected, what you
-tried first. That goes in the commit message, attached to the diff and
-searchable, where it stays accurate because it describes a moment in time.
+- NEVER: log a decision. Why you picked an approach, what you rejected, what you
+  tried first: that is the commit message. The exception is a constraint. If
+  someone undoes it and nothing complains, it was load-bearing, so write it as
+  the trap rather than the deliberation.
 
-**Restate the next line.** `# Increment the counter` above `count += 1`. Delete
-on sight.
+  ```text
+  # BAD:  Chose a queue over a cron job after weighing both.
+  # GOOD: A cron job double-fires when two deploys overlap.
+  ```
 
-**Add section banners.** `# ----- helpers -----`, `# ==== TYPES ====`.
+- NEVER: say it twice. One fact, one home. Explain it at the definition;
+  everywhere else points at it or stays silent. A doc file carries the pattern,
+  the code carries the instance.
 
-**Teach.** The reader knows the language. Explaining what a systemd unit is, or
-what semantic search does, is not a comment.
+- NEVER: hardcode a value the code owns. Values from upstream go stale the same
+  way. Name the observable, not the number.
 
-**Hedge.** "some cases", "various reasons", "handles edge cases", "etc." Name
-them or drop the sentence.
+  ```text
+  # BAD:  # times out after 30s        (above  timeout=settings.TIMEOUT)
+  # GOOD: # Must stay under the gateway timeout or retries stack up.
+  ```
 
-## When a comment is right
+- NEVER: open with a restatement of the next line. The waste is usually the
+  first clause of an otherwise useful comment, not the whole thing.
 
-Reach for one only after trying, in order: a better name, a smaller function, a
-type. If none can carry the meaning, comment. Good subjects:
+  ```text
+  # BAD:  Close the connection first: the pool reuses sockets and will hand
+  #       this one out again mid-write.
+  # GOOD: The pool reuses sockets and will hand this one out again mid-write.
+  ```
 
-- A constraint the code cannot state: an upstream bug workaround (link the
-  issue), a required ordering, a non-obvious coupling.
-- A consequence that lives elsewhere: "callers rely on this being sorted",
-  "changing this invalidates the cache key".
-- Why the obvious alternative is wrong, stated as a property of the code rather
-  than as a story about your reasoning.
+- NEVER: add section banners where the language already groups. The exception is
+  a long flat list where a comment is the only structure the syntax allows.
 
-## Shape
+- NEVER: teach. The reader knows the language and the tools.
 
-One line. If it needs a paragraph it is documentation: commit message, PR body,
-or a doc file. Say it once, in one file, and let other sites stand on their own.
+- NEVER: add commented-out code. If it is already there, leave it.
 
 ## Before you finish
 
-Re-read **only the comments in your diff**, in isolation from the code. For
-each: does it pass the test above? Does it reference the conversation, the
-change, or the reviewer? Would someone without the diff understand it?
-
-Delete what fails. A missing comment is cheaper than a misleading one. Leave
-comments you did not write alone unless they break these rules or you can show
-they are false.
+Re-read only the comments in your diff, in isolation from the code. Delete what
+does not pass. A missing comment is cheaper than a misleading one. Judge the
+comment, not its author.
