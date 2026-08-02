@@ -129,6 +129,7 @@ If a project has no type-checker, linter, or tests, **say so explicitly** instea
 
 # Git & Commits
 
+- **Branch and worktree naming.** When work is tied to a GitHub or Jira issue, name the branch `<type>/<KEY>-<slug>` (feat, fix, doc, chore): `feat/GH-123-add-login` for GitHub (`gh issue view 123 --json title` for the title), `fix/PROJ-456-broken-link` for Jira. Keep the key UPPERCASE.
 - When committing, **mirror the repo's existing style** from `git log` first, then follow the `commit` skill (`~/.agents/skills/commit/SKILL.md`) when available.
 - If precommit fails: read the full error, identify which tool failed and why, explain the fix, apply it, and re-run hooks. Only proceed after all hooks pass. Don't use `--no-verify`.
 - **Pushing: standing authorization.** Push feature branches and open Draft PRs on your own, I am typically ok with draft PRs as they are WIP.
