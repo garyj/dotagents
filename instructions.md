@@ -109,6 +109,12 @@ You may **not** report a task complete until you have:
 
 If a project has no type-checker, linter, or tests, **say so explicitly** instead of claiming success. Never say "Done!" with errors outstanding.
 
+## Cross-model review gate
+
+- Before declaring a non-trivial change ready for PR, run `autoreview` (wrapper on PATH; skill at `~/.agents/skills/autoreview/SKILL.md`) and reach a clean exit.
+- The authoring model never reviews its own work; it rubber-stamps its own blind spots. Claude-authored code keeps the Codex default engine; Codex-authored code runs `--engine claude`. Keep the same reviewer for every cycle of one loop; swapping mid-loop moves the goalposts and blocks convergence.
+- Findings are advisory. Verify each against the real code before fixing; after two fix cycles without convergence, stop and reclassify with me instead of patching on.
+
 # Testing
 
 - Tests must cover the functionality being implemented.
