@@ -1,0 +1,3 @@
+source: https://github.com/openclaw/agent-skills
+commit: a504fd8ef2e704d95312d1c6c8afdf7e4466bcfc
+vetted: 2026-08-02 full-file security audit, verdict RUN WITH CAVEATS
