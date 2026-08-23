@@ -1,0 +1,4 @@
+source: https://github.com/cursor/plugins
+path: pstack/skills/unslop/SKILL.md
+commit: 99559f2f52047978602ef365589275831e76af07
+vetted: 2026-08-23 full read + diff vs upstream, identical apart from list renumbering, prose-only style rules, verdict OK
