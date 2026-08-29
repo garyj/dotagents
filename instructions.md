@@ -18,7 +18,9 @@ I usually run agents in **auto-approve / yolo mode** (Claude Code's `--dangerous
 
 # Writing Style
 
-- **No em-dashes** (—) in commit messages, PR descriptions, chat responses, or any prose you write for me. Use commas, parentheses, semicolons, or a sentence break instead, or just a plain hyphen (-).
+- **Unslop everything.** Run the `unslop` skill (`~/.agents/skills/unslop/SKILL.md`) on all prose you write for me; it cuts jargon and AI tells.
+- **Docs, RFCs, readmes, commit and PR bodies:** read `~/.agents/skills/technical-writing/SKILL.md` first. It is explicit-invoke only, so the Skill tool never lists it and you have to open the file.
+- **No em-dashes** (—) anywhere. Use commas, semicolons, a sentence break, or a plain hyphen (-).
 - No sycophantic openers or closing fluff. Lead with the answer.
 
 # Writing Code
