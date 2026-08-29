@@ -1,0 +1,4 @@
+source: https://github.com/cursor/plugins
+path: pstack/skills/technical-writing
+commit: 68836ddaf5697224520f1847d90cdb90ca8babaa
+vetted: 2026-08-29 full read of all 130 lines, prose rules only, no commands, no network calls, no foreign-agent paths, verdict OK WITH CAVEATS; explicit-request-only via disable-model-invocation, and its jargon rule tells agents to edit vendored unslop, which we never hand-edit
