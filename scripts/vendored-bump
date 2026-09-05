@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# Bump every vendored skill that moved upstream onto its own branch and PR.
+#
+#   scripts/vendored-bump [SKILL]
+#
+# Prints the number of each PR it created or refreshed, one per line. Needs a
+# git identity, push access to origin, and gh authenticated for the repo.
+set -euo pipefail
+
+only=${1:-}
+base=$(git rev-parse --abbrev-ref HEAD)
+repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
+check=$(mktemp)
+trap 'rm -f "$check"' EXIT
+
+# shellcheck disable=SC2086
+uv run --quiet scripts/vendor_skill.py check --json $only > "$check"
+
+for skill in $(jq -r '.[] | select(.behind) | .skill' "$check"); do
+    upstream=$(jq -r --arg s "$skill" '.[] | select(.skill == $s) | .upstream' "$check")
+    branch="vendor/$skill"
+
+    # An open PR already at this upstream commit needs no second push.
+    open=$(gh pr list --head "$branch" --state open --json number --jq '.[0].number // empty')
+    if [ -n "$open" ]; then
+        pinned=$(gh api "repos/$repo/contents/skills/$skill/.provenance.json?ref=$branch" --jq .content | base64 -d | jq -r .commit)
+        if [ "$pinned" = "$upstream" ]; then
+            echo "$skill: PR #$open already at ${upstream:0:7}" >&2
+            continue
+        fi
+    fi
+
+    git switch -q -C "$branch" "$base"
+    old=$(jq -r .commit "skills/$skill/.provenance.json")
+    log=$(uv run --quiet scripts/vendor_skill.py sync --latest "$skill" 2>&1) || true
+    new=$(jq -r .commit "skills/$skill/.provenance.json")
+
+    if ! prek run --all-files > /dev/null; then
+        echo "$skill: hidden-Unicode audit failed at ${new:0:7}, no PR" >&2
+        git switch -q "$base" && git branch -q -D "$branch"
+        continue
+    fi
+
+    git add -A "skills/$skill"
+    git commit -q -m "update: bump $skill to ${new:0:7}"
+    git push -q --force-with-lease origin "$branch"
+
+    slug=$(jq -r .source "skills/$skill/.provenance.json" | sed 's|https://github.com/||')
+    path=$(jq -r .path "skills/$skill/.provenance.json")
+    compare=$(gh api "repos/$slug/compare/$old...$new")
+    commits=$(jq -r '[.commits[] | "- " + .sha[0:7] + " " + (.commit.message | split("\n")[0])] | .[0:40] | join("\n")' <<< "$compare")
+    # shellcheck disable=SC2016
+    files=$(jq -r --arg p "$path" \
+        '[.files[] | select(.filename | startswith($p)) | "- `" + .filename + "` +" + (.additions|tostring) + " -" + (.deletions|tostring)] | join("\n")' <<< "$compare")
+    body=$(printf '%s\n' \
+        "Upstream: https://github.com/$slug/compare/$old...$new" "" \
+        "### Skill files changed" "$files" "" \
+        "### Upstream commits" "$commits" "" \
+        "### Sync" '```' "$log" '```' "" \
+        "Vetting entry is PENDING in \`skills/$skill/.provenance.json\`. Review comments follow; nothing merges on its own.")
+
+    if [ -n "$open" ]; then
+        gh pr edit "$open" --body "$body" > /dev/null
+        echo "$open"
+    else
+        url=$(gh pr create --head "$branch" --base "$base" --label vendored \
+            --title "update: bump $skill to ${new:0:7}" --body "$body")
+        basename "$url"
+    fi
+    git switch -q "$base"
+done

@@ -1,0 +1,22 @@
+name: Security
+
+# Static security audit of the GitHub Actions workflows themselves (zizmor):
+# catches template injection, over-broad permissions, credential persistence,
+# and unpinned actions. Findings surface in the PR and in code scanning.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  zizmor:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # upload findings to code scanning (free on public repos)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: zizmorcore/zizmor-action@70fb788f84895a7701f5643d103d587e460b5c99 # v0.6.3

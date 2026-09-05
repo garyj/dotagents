@@ -1,0 +1,75 @@
+name: Vendored skills
+
+# Weekly and on demand: one branch and PR per vendored skill that moved
+# upstream, then a model review of the upstream diff as a comment on each PR.
+# Pass pr= to re-run the review on an existing PR without bumping.
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      skill:
+        description: Bump only this skill (default all)
+        type: string
+      pr:
+        description: Skip the bump and review this PR number
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: vendored
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    if: ${{ !inputs.pr }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the vendor/* branches
+      pull-requests: write # open the PRs
+    outputs:
+      prs: ${{ steps.bump.outputs.prs }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+      - id: bump
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ONLY: ${{ inputs.skill }}
+        run: |
+          gh auth setup-git
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          prs=$(scripts/vendored-bump "$ONLY" | jq -R . | jq -sc .)
+          echo "prs=$prs" >> "$GITHUB_OUTPUT"
+
+  review:
+    needs: bump
+    if: ${{ always() && (inputs.pr || (needs.bump.result == 'success' && needs.bump.outputs.prs != '[]')) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # post the review comment
+    strategy:
+      fail-fast: false
+      matrix:
+        pr: ${{ inputs.pr && fromJSON(format('["{0}"]', inputs.pr)) || fromJSON(needs.bump.outputs.prs) }}
+        model: ${{ fromJSON(vars.REVIEW_MODELS || '["claude-fable-5-1"]') }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          PR: ${{ matrix.pr }}
+          MODEL: ${{ matrix.model }}
+        run: |
+          gh pr checkout "$PR"
+          uv run scripts/review_bump.py --pr "$PR" --model "$MODEL"

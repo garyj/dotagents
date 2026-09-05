@@ -1,0 +1,4 @@
+# CI tools for the hidden-Unicode audit; same pins as the dotfiles .chezmoidata.yaml.
+[tools]
+prek = "0.5.1"
+"github:microsoft/apm" = "0.29.0"
