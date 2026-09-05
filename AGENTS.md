@@ -6,9 +6,9 @@ instruction files are symlinks to `instructions.md`, and `~/.claude/skills` and 
 agent at once.
 
 - `instructions.md` is the shared body. `docs/` holds the files it includes by path.
-- `skills/<name>/` is one skill. A `.provenance` file marks a byte-identical copy of someone else's skill that
-  `scripts/vendor_skill.py` owns. Never hand-edit one. Invoke the `vendor-skill` skill before adding, updating, or
-  removing one.
+- `skills/<name>/` is one skill. A `.provenance.json` marks a copy of someone else's skill, owned by
+  `scripts/vendor_skill.py` with local changes in `.patches/`. Never hand-edit one without capturing the edit as a
+  patch. Invoke the `vendor-skill` skill before adding, updating, patching, or removing one.
 - Symlinks in `skills/` that point outside the repo belong to chezmoi and are listed in `.git/info/exclude`. Leave
   them alone.
 - README.md carries the per-agent wiring table and the traps. Read it before changing how any file is found.

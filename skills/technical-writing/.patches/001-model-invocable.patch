@@ -1,0 +1,14 @@
+Model-invocable: garyj's global instructions want it applied to every doc, not only on /technical-writing.
+
+diff --git a/SKILL.md b/SKILL.md
+index d13baf9..9d43419 100644
+--- a/SKILL.md
++++ b/SKILL.md
+@@ -1,7 +1,6 @@
+ ---
+ name: technical-writing
+ description: "Layered technical-writing standard: Diátaxis structure, Google developer style sentences, STE instruction rules, Global English syntax. Use for /technical-writing or when writing or reviewing docs, RFCs, readmes, PR descriptions, or commit messages."
+-disable-model-invocation: true
+ ---
+ 
+ # Technical writing

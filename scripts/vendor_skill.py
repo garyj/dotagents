@@ -1,17 +1,18 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["pyyaml>=6", "rich>=13", "typer>=0.12"]
+# dependencies = ["rich>=13", "typer>=0.12"]
 # ///
 """Sync vendored third-party skills in skills/ from upstream.
 
-Each vendored skill carries a .provenance naming its upstream repo, the subpath
-the skill lives at, the pinned commit, and the vetting verdict. This script
+Each vendored skill carries a .provenance.json naming its upstream repo, the
+subpath the skill lives at, the pinned commit, and a vetting log. This script
 re-copies that subpath at the pinned commit, so `sync NAME` is an idempotent
 drift check and `sync NAME --latest` is the update.
 
-Vendored content is byte-identical to upstream by design, which keeps every
-future comparison a cmp rather than a merge. Nothing here merges: sync
-overwrites, and prunes files upstream no longer ships.
+Vendored content is upstream bytes plus the patches in the skill's .patches/
+directory, applied in name order. Nothing here merges: sync overwrites, and
+prunes files upstream no longer ships. A hand edit is drift until
+`patch NAME SLUG --why ...` captures it as a patch.
 
 The pinned commit is the repo revision the content was taken from, not the last
 revision to touch the skill, so "behind" always means the skill's own bytes
@@ -20,7 +21,9 @@ changed. Unrelated upstream traffic never raises a false alarm.
 
 from __future__ import annotations
 
+import datetime as dt
 import json
+import shutil
 import subprocess
 import tarfile
 import tempfile
@@ -28,12 +31,12 @@ from pathlib import Path
 from typing import Annotated, Any, NamedTuple
 
 import typer
-import yaml
 from rich.console import Console
 from rich.table import Table
 
 SKILLS_DIR = Path("skills")
-PROVENANCE = ".provenance"
+PROVENANCE = ".provenance.json"
+PATCHES_DIR = ".patches"
 
 app = typer.Typer(help=__doc__, no_args_is_help=True, add_completion=False)
 console = Console()
@@ -45,6 +48,15 @@ class Entry(NamedTuple):
     data: bytes
     symlink: bool
     executable: bool
+
+
+class Plan(NamedTuple):
+    """What a skill directory should hold, and how the directory differs from it."""
+
+    entries: dict[Path, Entry]
+    writes: dict[Path, Entry]
+    prunes: set[Path]
+    failed_patches: list[Path]
 
 
 def fail(message: str) -> typer.Exit:
@@ -63,14 +75,14 @@ def gh_json(endpoint: str) -> Any:
     return json.loads(gh("api", endpoint))
 
 
-def load_skills(names: list[str]) -> dict[str, dict[str, str]]:
-    """Read .provenance for the named skills, or every vendored skill."""
+def load_skills(names: list[str]) -> dict[str, dict[str, Any]]:
+    """Read the provenance of the named skills, or of every vendored skill."""
     skills = {}
     for provenance in sorted(SKILLS_DIR.glob(f"*/{PROVENANCE}")):
         name = provenance.parent.name
         if names and name not in names:
             continue
-        data = yaml.safe_load(provenance.read_text())
+        data = json.loads(provenance.read_text())
         for field in ("source", "path", "commit"):
             if field not in data:
                 raise fail(f"{provenance}: missing required field '{field}'")
@@ -81,6 +93,12 @@ def load_skills(names: list[str]) -> dict[str, dict[str, str]]:
     if not skills:
         raise fail(f"no vendored skills found under {SKILLS_DIR}")
     return skills
+
+
+def write_provenance(name: str, data: dict[str, Any]) -> None:
+    order = ["source", "path", "commit", "vetted"]
+    ordered = {k: data[k] for k in order if k in data} | {k: v for k, v in data.items() if k not in order}
+    (SKILLS_DIR / name / PROVENANCE).write_text(json.dumps(ordered, indent=2) + "\n")
 
 
 def repo_slug(source: str) -> str:
@@ -95,7 +113,7 @@ def default_head(slug: str) -> tuple[str, str]:
 
 
 def fetch_subtree(slug: str, sha: str, path: str, into: Path) -> Path:
-    """Extract the repo tarball at sha and return the requested subpath."""
+    """Extract the repo tarball at sha and return the requested subpath as a directory."""
     archive = into / "upstream.tar.gz"
     archive.write_bytes(gh("api", f"/repos/{slug}/tarball/{sha}"))
     with tarfile.open(archive) as tar:
@@ -104,7 +122,25 @@ def fetch_subtree(slug: str, sha: str, path: str, into: Path) -> Path:
     subtree = into / root / path
     if not subtree.exists():
         raise fail(f"{slug}@{sha[:7]}: {path} does not exist")
+    if subtree.is_file():
+        single = into / "single"
+        single.mkdir()
+        shutil.copy2(subtree, single / subtree.name, follow_symlinks=False)
+        return single
     return subtree
+
+
+def apply_patches(name: str, subtree: Path) -> list[Path]:
+    """Apply the skill's patches to the fetched subtree; return the ones that did not apply."""
+    failed = []
+    for patch in sorted((SKILLS_DIR / name / PATCHES_DIR).glob("*.patch")):
+        result = subprocess.run(
+            ["git", "apply", str(patch.resolve())], cwd=subtree, capture_output=True, text=True, check=False
+        )
+        if result.returncode != 0:
+            console.print(f"  {'failed':>6}  {patch}: {result.stderr.strip()}", style="red")
+            failed.append(patch)
+    return failed
 
 
 def present(path: Path) -> bool:
@@ -129,32 +165,27 @@ def write_entry(path: Path, entry: Entry) -> None:
     path.chmod(0o755 if entry.executable else 0o644)
 
 
-def build_plan(subtree: Path, dest: Path) -> dict[Path, Entry]:
-    """Map each destination path to the entry it should hold."""
-    if subtree.is_file():
-        return {dest / subtree.name: read_entry(subtree)}
-    plan = {}
+def upstream_files(dest: Path) -> set[Path]:
+    """Files in the skill directory that upstream owns: everything but the provenance and patches."""
+    return {
+        p
+        for p in dest.rglob("*")
+        if (p.is_symlink() or p.is_file()) and p.name != PROVENANCE and PATCHES_DIR not in p.relative_to(dest).parts
+    }
+
+
+def plan_sync(name: str, data: dict[str, Any], sha: str, tmp: Path) -> Plan:
+    subtree = fetch_subtree(repo_slug(data["source"]), sha, data["path"], tmp)
+    failed = apply_patches(name, subtree)
+    dest = SKILLS_DIR / name
+    entries = {}
     for entry in sorted(subtree.rglob("*")):
         if entry.is_dir() and not entry.is_symlink():
             continue
-        plan[dest / entry.relative_to(subtree)] = read_entry(entry)
-    return plan
-
-
-def plan_sync(name: str, data: dict[str, str], sha: str, tmp: Path) -> tuple[dict[Path, Entry], set[Path]]:
-    """Work needed to make the skill directory match upstream at sha."""
-    subtree = fetch_subtree(repo_slug(data["source"]), sha, data["path"], tmp)
-    dest = SKILLS_DIR / name
-    plan = build_plan(subtree, dest)
-    writes = {p: e for p, e in plan.items() if not present(p) or read_entry(p) != e}
-    prunes = {p for p in dest.rglob("*") if (p.is_symlink() or p.is_file()) and p.name != PROVENANCE} - set(plan)
-    return writes, prunes
-
-
-def write_provenance(path: Path, data: dict[str, str]) -> None:
-    order = ["source", "path", "commit", "vetted"]
-    keys = order + [k for k in data if k not in order]
-    path.write_text("\n".join(f"{k}: {data[k]}" for k in keys if k in data) + "\n")
+        entries[dest / entry.relative_to(subtree)] = read_entry(entry)
+    writes = {p: e for p, e in entries.items() if not present(p) or read_entry(p) != e}
+    prunes = upstream_files(dest) - set(entries)
+    return Plan(entries, writes, prunes, failed)
 
 
 def require_repo_root() -> None:
@@ -166,27 +197,51 @@ Names = Annotated[list[str] | None, typer.Argument(help="Skills to act on (defau
 
 
 @app.command()
-def check(names: Names = None) -> None:
+def check(
+    names: Names = None,
+    as_json: Annotated[bool, typer.Option("--json", help="Print one JSON object per skill instead of a table.")] = False,
+) -> None:
     """Report which vendored skills changed upstream."""
     require_repo_root()
+    rows = []
+    for name, data in load_skills(names or []).items():
+        head, when = default_head(repo_slug(data["source"]))
+        changed, conflicts = 0, 0
+        if head != data["commit"]:
+            with tempfile.TemporaryDirectory() as tmp:
+                plan = plan_sync(name, data, head, Path(tmp))
+                changed = len(plan.writes) + len(plan.prunes)
+                conflicts = len(plan.failed_patches)
+        rows.append(
+            {
+                "skill": name,
+                "behind": bool(changed),
+                "pinned": data["commit"],
+                "upstream": head,
+                "date": when,
+                "changed_files": changed,
+                "patch_conflicts": conflicts,
+            }
+        )
+
+    if as_json:
+        print(json.dumps(rows, indent=2))
+        return
     table = Table(box=None, pad_edge=False)
     for column in ("skill", "status", "pinned", "upstream", "date"):
         table.add_column(column)
-
-    for name, data in load_skills(names or []).items():
-        head, when = default_head(repo_slug(data["source"]))
-        changed = 0
-        if head != data["commit"]:
-            with tempfile.TemporaryDirectory() as tmp:
-                writes, prunes = plan_sync(name, data, head, Path(tmp))
-                changed = len(writes) + len(prunes)
+    for row in rows:
+        status = "up to date"
+        if row["behind"]:
+            status = f"behind ({row['changed_files']} files"
+            status += f", {row['patch_conflicts']} patch conflicts)" if row["patch_conflicts"] else ")"
         table.add_row(
-            name,
-            f"behind ({changed} files)" if changed else "up to date",
-            data["commit"][:7],
-            head[:7] if changed else "",
-            when if changed else "",
-            style="yellow" if changed else "green",
+            row["skill"],
+            status,
+            row["pinned"][:7],
+            row["upstream"][:7] if row["behind"] else "",
+            row["date"] if row["behind"] else "",
+            style="yellow" if row["behind"] else "green",
         )
     console.print(table)
 
@@ -194,18 +249,18 @@ def check(names: Names = None) -> None:
 @app.command()
 def sync(
     names: Names = None,
-    latest: Annotated[
-        bool, typer.Option(help="Move to the upstream default branch head.")
-    ] = False,
+    latest: Annotated[bool, typer.Option(help="Move to the upstream default branch head.")] = False,
     dry_run: Annotated[bool, typer.Option(help="Report what would change, write nothing.")] = False,
 ) -> None:
-    """Copy upstream content into the skill directory.
+    """Copy upstream content plus the skill's patches into the skill directory.
 
     With no flags this re-copies the pinned commit, so it both heals and detects
-    drift. A dry run that finds drift at the pinned commit exits non-zero.
+    drift. A dry run that finds drift at the pinned commit exits non-zero. With
+    --latest, a patch that no longer applies is reported, left in place, and
+    noted in the vetting log; the exit status is non-zero so a caller notices.
     """
     require_repo_root()
-    drifted = False
+    drifted = conflicted = False
 
     for name, data in load_skills(names or []).items():
         slug = repo_slug(data["source"])
@@ -218,32 +273,69 @@ def sync(
             console.print(f"{name}: {data['commit'][:7]} -> {sha[:7]} ({when})", style="bold")
 
         with tempfile.TemporaryDirectory() as tmp:
-            writes, prunes = plan_sync(name, data, sha, Path(tmp))
-            for path in sorted(writes):
+            plan = plan_sync(name, data, sha, Path(tmp))
+            if plan.failed_patches and not latest:
+                raise fail(f"{name}: a patch does not apply at the pinned commit; fix or delete it")
+            for path in sorted(plan.writes):
                 verb, style = ("update", "yellow") if present(path) else ("add", "green")
                 console.print(f"  {verb:>6}  {path}", style=style)
-            for path in sorted(prunes):
+            for path in sorted(plan.prunes):
                 console.print(f"  {'prune':>6}  {path}", style="red")
-            if not writes and not prunes:
+            if not plan.writes and not plan.prunes:
                 console.print(f"{name}: matches {slug}@{sha[:7]}", style="green")
-            drifted = drifted or bool(writes or prunes)
+            drifted = drifted or bool(plan.writes or plan.prunes)
+            conflicted = conflicted or bool(plan.failed_patches)
 
             if dry_run:
                 continue
-            for path, entry in writes.items():
+            for path, entry in plan.writes.items():
                 write_entry(path, entry)
-            for path in prunes:
+            for path in plan.prunes:
                 path.unlink()
 
-        if latest:
+        if latest and not dry_run:
+            if plan.writes or plan.prunes or plan.failed_patches:
+                note = f"{dt.datetime.now(tz=dt.UTC).date()} PENDING: bumped {data['commit'][:7]} -> {sha[:7]}"
+                if plan.failed_patches:
+                    note += ", patches not applied: " + ", ".join(p.name for p in plan.failed_patches)
+                data["vetted"] = [*data.get("vetted", []), note]
             data["commit"] = sha
-            if writes or prunes:
-                # The content is new, so the old verdict no longer describes it.
-                data["vetted"] = f"PENDING - previous: {data['vetted']}"
-            write_provenance(SKILLS_DIR / name / PROVENANCE, data)
+            write_provenance(name, data)
 
-    if drifted and dry_run and not latest:
+    if (drifted and dry_run and not latest) or conflicted:
         raise typer.Exit(1)
+
+
+@app.command()
+def patch(
+    name: Annotated[str, typer.Argument(help="Vendored skill whose hand edits to capture.")],
+    slug: Annotated[str, typer.Argument(help="Short name for the patch file.")],
+    why: Annotated[str, typer.Option(help="One line on why the change exists; becomes the patch header.")],
+) -> None:
+    """Capture the hand edits in a skill directory as its next patch file."""
+    require_repo_root()
+    data = load_skills([name])[name]
+    dest = SKILLS_DIR / name
+    with tempfile.TemporaryDirectory() as tmp:
+        plan = plan_sync(name, data, data["commit"], Path(tmp))
+        if plan.failed_patches:
+            raise fail(f"{name}: an existing patch does not apply; fix that first")
+        if not plan.writes and not plan.prunes:
+            raise fail(f"{name}: no hand edits to capture")
+        expected, actual = Path(tmp) / "a", Path(tmp) / "b"
+        for path, entry in plan.entries.items():
+            write_entry(expected / path.relative_to(dest), entry)
+        for path in upstream_files(dest):
+            write_entry(actual / path.relative_to(dest), read_entry(path))
+        diff = subprocess.run(
+            ["git", "-c", "diff.noprefix=false", "diff", "--no-index", "--no-prefix", "a", "b"], cwd=tmp, capture_output=True, text=True, check=False
+        ).stdout
+
+    patches = dest / PATCHES_DIR
+    patches.mkdir(exist_ok=True)
+    target = patches / f"{len(list(patches.glob('*.patch'))) + 1:03d}-{slug}.patch"
+    target.write_text(f"{why.strip()}\n\n{diff}")
+    console.print(f"wrote {target}", style="green")
 
 
 if __name__ == "__main__":

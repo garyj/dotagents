@@ -38,16 +38,23 @@ repo and a `run_after_` script runs `scripts/install`.
 - `instructions.md` is the shared body.
 - `docs/` holds the files the body includes by path.
 - `skills/<name>/` is one skill per directory. Your own are plain directories.
-- `skills/<name>/.provenance` marks a byte-identical copy of someone else's skill, pinned by commit.
-  `scripts/vendor_skill.py` owns those files. Read the `vendor-skill` skill under `.claude/skills/` before adding,
-  updating, or removing one.
+- `skills/<name>/.provenance.json` marks a copy of someone else's skill, pinned by commit, with a vetting log.
+  `skills/<name>/.patches/` holds any local changes as patch files. `scripts/vendor_skill.py` owns those
+  directories. Read the `vendor-skill` skill under `.claude/skills/` before adding, updating, or removing one.
 - `scripts/install` makes the symlinks in the table above.
 
 ## Vendored skills
 
-`just skills check` reports which vendored skills changed upstream. `just skills sync` re-copies every pinned commit,
-which heals a hand-edit. `just skills sync --latest NAME` moves one skill to the upstream head and marks its
-`.provenance` as unvetted until you read the new content.
+`just skills check` reports which vendored skills changed upstream. `just skills sync` re-copies every pinned commit
+plus its patches, which heals a hand edit. `just skills patch NAME SLUG --why "..."` captures a hand edit as a patch
+instead. `just skills sync --latest NAME` moves one skill to the upstream head and logs a PENDING vetting entry until
+you read the new content.
+
+The `Vendored skills` workflow runs weekly and on demand (**Actions**, then **Run workflow**). For each skill that
+moved it opens one PR with the bump, then posts a model's review of the upstream diff: what changed, anything on the
+vetting checklist, whether each patch still applies with a proposed re-application when not, rules the model already
+follows by default, and a proposed vetting entry. One comment per model in the `REVIEW_MODELS` repository variable
+(default `["claude-fable-5-1"]`). Nothing merges on its own; reply `/merge` to the PR email to land it.
 
 ## Skills that chezmoi installs
 

@@ -1,4 +1,0 @@
-source: https://github.com/openclaw/agent-skills
-path: skills/autoreview
-commit: 128a4ea60a93badf0d6d8f3381057f93f7085b29
-vetted: 2026-08-23 delta audit vs a504fd8, verdict RUN WITH CAVEATS
