@@ -70,6 +70,4 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PR: ${{ matrix.pr }}
           MODEL: ${{ matrix.model }}
-        run: |
-          gh pr checkout "$PR"
-          uv run scripts/review_bump.py --pr "$PR" --model "$MODEL"
+        run: uv run scripts/review_bump.py --pr "$PR" --model "$MODEL"

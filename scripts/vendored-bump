@@ -21,7 +21,8 @@ for skill in $(jq -r '.[] | select(.behind) | .skill' "$check"); do
     branch="vendor/$skill"
 
     # An open PR already at this upstream commit needs no second push.
-    open=$(gh pr list --head "$branch" --state open --json number --jq '.[0].number // empty')
+    open=$(gh pr list --head "$branch" --state open --json number,isCrossRepository \
+        --jq '[.[] | select(.isCrossRepository | not)][0].number // empty')
     if [ -n "$open" ]; then
         pinned=$(gh api "repos/$repo/contents/skills/$skill/.provenance.json?ref=$branch" --jq .content | base64 -d | jq -r .commit)
         if [ "$pinned" = "$upstream" ]; then

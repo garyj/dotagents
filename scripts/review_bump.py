@@ -4,7 +4,8 @@
 # ///
 """Review a vendored-skill bump PR with a model and post the review as a comment.
 
-Runs from the Vendored skills workflow with the PR branch checked out. Gathers
+Runs from the Vendored skills workflow on the default branch and reads the PR's
+files through the API, so nothing from the PR branch executes here. Gathers
 the upstream diff between the old and new pins, the skill's patches, its vetting
 log, the vetting checklist, and earlier review comments on the same skill, then
 asks one model for a structured review. The model only writes a PR comment; it
@@ -42,17 +43,36 @@ def gh_json(*args: str):
     return json.loads(gh(*args))
 
 
+def file_at(repo: str, path: str, ref: str) -> str:
+    """Contents of one file in the repo at ref, or "" when it does not exist."""
+    result = subprocess.run(
+        ["gh", "api", f"repos/{repo}/contents/{path}?ref={ref}", "--jq", ".content"],
+        capture_output=True, text=True, check=False,
+    )
+    return base64.b64decode(result.stdout).decode() if result.returncode == 0 else ""
+
+
+def listing(repo: str, path: str, ref: str) -> list[dict]:
+    """Entries of one directory in the repo at ref, or [] when it does not exist."""
+    result = subprocess.run(
+        ["gh", "api", f"repos/{repo}/contents/{path}?ref={ref}"], capture_output=True, text=True, check=False
+    )
+    return json.loads(result.stdout) if result.returncode == 0 else []
+
+
 def marker(model: str) -> str:
     return f"<!-- vendored-review:{model} -->"
 
 
 def gather(repo: str, pr: str) -> dict[str, str]:
     """Everything the model gets to see, as named text blocks."""
-    view = gh_json("pr", "view", pr, "--repo", repo, "--json", "headRefName,baseRefName,title,body")
+    view = gh_json("pr", "view", pr, "--repo", repo, "--json", "headRefName,baseRefName,isCrossRepository")
+    if view["isCrossRepository"]:
+        sys.exit(f"PR {pr} comes from a fork; only branches of this repo are reviewed")
     skill = view["headRefName"].removeprefix("vendor/")
-    new = json.loads(Path(f"skills/{skill}/.provenance.json").read_text())
-    old_raw = gh_json("api", f"repos/{repo}/contents/skills/{skill}/.provenance.json?ref={view['baseRefName']}")
-    old = json.loads(base64.b64decode(old_raw["content"]))
+    head, base = view["headRefName"], view["baseRefName"]
+    new = json.loads(file_at(repo, f"skills/{skill}/.provenance.json", head))
+    old = json.loads(file_at(repo, f"skills/{skill}/.provenance.json", base))
     slug = new["source"].removeprefix("https://github.com/")
 
     compare = gh_json("api", f"repos/{slug}/compare/{old['commit']}...{new['commit']}")
@@ -69,11 +89,13 @@ def gather(repo: str, pr: str) -> dict[str, str]:
         diff.append(block)
         used += len(block)
 
-    patches = sorted(Path(f"skills/{skill}/.patches").glob("*.patch"))
-    patch_text = "\n\n".join(f"### {p.name}\n```diff\n{p.read_text()}\n```" for p in patches) or "(none)"
-
-    skill_file = Path(f"skills/{skill}/SKILL.md")
-    current = skill_file.read_text() if skill_file.exists() else "(no SKILL.md at this path)"
+    patches = [
+        f"### {entry['name']}\n```diff\n{file_at(repo, entry['path'], head)}\n```"
+        for entry in listing(repo, f"skills/{skill}/.patches", head)
+        if entry["name"].endswith(".patch")
+    ]
+    patch_text = "\n\n".join(patches) or "(none)"
+    current = file_at(repo, f"skills/{skill}/SKILL.md", head) or "(no SKILL.md at this path)"
 
     earlier = []
     for item in gh_json("pr", "list", "--repo", repo, "--state", "all", "--label", "vendored",
@@ -81,7 +103,7 @@ def gather(repo: str, pr: str) -> dict[str, str]:
         if str(item["number"]) == pr:
             continue
         for c in gh_json("api", f"repos/{repo}/issues/{item['number']}/comments"):
-            if c["body"].startswith("<!-- vendored-review:"):
+            if c["user"]["login"] == "github-actions[bot]" and c["body"].startswith("<!-- vendored-review:"):
                 earlier.append(f"### PR #{item['number']} {item['title']}\n{c['body'][:6000]}")
     earlier_text = "\n\n".join(earlier[:4]) or "(none)"
 
