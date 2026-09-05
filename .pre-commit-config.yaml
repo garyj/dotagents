@@ -1,0 +1,15 @@
+# Pre-commit gate, run by prek. `apm` and `prek` come from the global mise
+# config, so there is no repo-level tool install.
+#
+# Scans every staged text file (not just apm-managed packages) for hidden
+# Unicode (tag chars, bidi overrides, variation selectors, zero-width) used to
+# smuggle instructions past humans. apm audit scans one file per call, so the
+# hook loops it over the staged files. Full sweep: prek run apm-audit --all-files
+repos:
+  - repo: local
+    hooks:
+      - id: apm-audit
+        name: apm audit (hidden-Unicode scan of staged files)
+        entry: bash -c 'rc=0; for f in "$@"; do apm audit --file "$f" || rc=1; done; exit $rc' --
+        language: system
+        types: [text]

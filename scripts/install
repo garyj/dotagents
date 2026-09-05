@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# Link this checkout into every agent's config. Safe to re-run.
+#
+#   scripts/install                 make the links
+#   scripts/install --check         report what differs, change nothing
+#   scripts/install --bridge DIR    also link each DIR/<name> into skills/
+#
+# Anything in the way that is not a symlink is reported and left alone.
+set -euo pipefail
+
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+check=false
+bridge=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --check) check=true ;;
+        --bridge) bridge=$2; shift ;;
+        *) echo "usage: scripts/install [--check] [--bridge DIR]" >&2; exit 2 ;;
+    esac
+    shift
+done
+
+refused=0
+pending=0
+
+link() {
+    local target=$1 path=$2
+    if [ -L "$path" ] && [ "$(readlink "$path")" = "$target" ]; then
+        return
+    fi
+    if [ -e "$path" ] && [ ! -L "$path" ]; then
+        echo "refusing: $path is not a symlink" >&2
+        refused=1
+        return
+    fi
+    echo "link: $path -> $target"
+    pending=1
+    if ! $check; then
+        mkdir -p "$(dirname "$path")"
+        ln -sfn "$target" "$path"
+    fi
+}
+
+link "$root/instructions.md" "$HOME/.claude/CLAUDE.md"
+link "$root/instructions.md" "$HOME/.codex/AGENTS.md"
+link "$root/instructions.md" "$HOME/.gemini/GEMINI.md"
+link "$root/instructions.md" "$HOME/.pi/agent/AGENTS.md"
+link "$root/instructions.md" "$HOME/.config/opencode/AGENTS.md"
+link "$root/skills" "$HOME/.claude/skills"
+link "$root/skills" "$HOME/.codex/skills"
+
+if [ -n "$bridge" ]; then
+    # Bridged skills belong to another tool, so git is told to ignore them per
+    # clone rather than in the committed .gitignore.
+    exclude="$root/.git/info/exclude"
+    for dir in "$bridge"/*/; do
+        [ -d "$dir" ] || continue
+        name=$(basename "$dir")
+        link "${dir%/}" "$root/skills/$name"
+        if ! grep -qxF "skills/$name" "$exclude" 2>/dev/null; then
+            echo "exclude: skills/$name"
+            pending=1
+            if ! $check; then
+                mkdir -p "$(dirname "$exclude")"
+                echo "skills/$name" >> "$exclude"
+            fi
+        fi
+    done
+fi
+
+if [ "$refused" = 1 ]; then
+    exit 1
+fi
+if $check && [ "$pending" = 1 ]; then
+    exit 1
+fi

@@ -1,27 +1,27 @@
 ---
 name: vendor-skill
-description: Use when adding, updating, vetting, or removing a third-party agent skill under home/dot_agents/skills/. Covers the externals-vs-vendored decision, the dot_provenance schema, and what vetting has to catch.
+description: Use when adding, updating, vetting, or removing a third-party agent skill under skills/. Covers the vendored-vs-chezmoi-external decision, the .provenance schema, and what vetting has to catch.
 ---
 
 # Vendoring a third-party skill
 
 `scripts/vendor_skill.py` (`just skills`) owns every write into a vendored directory, because the copy has to stay
-byte-identical to upstream and sit under chezmoi's filename attributes (`executable_`, `symlink_`, `dot_`). A hand-edit
-reads as drift, and the next sync overwrites it.
+byte-identical to upstream. A hand-edit reads as drift, and the next sync overwrites it.
 
-## Vendor it, or make it an external?
+## Vendor it, or let chezmoi fetch it?
 
-If upstream tags releases, it does not belong here at all. Add it to `home/.chezmoiexternal.toml.tmpl` with a version
-pin in `.chezmoidata.yaml`, the way agent-browser, sentry-cli and worktrunk are done, and let Renovate bump it. chezmoi
-is the fetcher there, so moving the pin is the entire update.
+A skill that ships with a pinned CLI belongs with the CLI's pin. Add it as an archive external in the dotfiles repo
+(`home/.chezmoiexternal.toml.tmpl`, target `.local/share/agent-skills/<name>`) with the version from
+`.chezmoidata.yaml`, the way agent-browser, sentry-cli, and worktrunk are done. chezmoi extracts it and
+`scripts/install --bridge` links it into `skills/`, so the skill and the binary move together and Renovate bumps both.
 
-Vendor it when upstream has no releases, which is most skill repos, or when the content itself should land in the diff.
-Renovate cannot maintain those on its own: it advances a pin but cannot copy files, so the provenance would lie.
+Vendor it here when it is a standalone skill with no binary to track, which is most skill repos. The content lands in
+the diff, pinned by commit, and `just skills check` reports when upstream moves.
 
 ## Adding one
 
-1. Write `home/dot_agents/skills/<name>/dot_provenance` with `source`, `path`, and `commit` (all required), plus
-   `vetted: PENDING`. `path` is the subpath inside the upstream repo and may be a directory or a single file.
+1. Write `skills/<name>/.provenance` with `source`, `path`, and `commit` (all required), plus `vetted: PENDING`.
+   `path` is the subpath inside the upstream repo and may be a directory or a single file.
 2. `just skills sync <name>` fetches that commit and writes the files.
 3. Vet what landed, then replace `vetted` with the date, how you checked, and a verdict.
 
@@ -36,7 +36,7 @@ prek hook already scans for), two failure modes are specific to skills:
   are vendored too, the steps that call them are undefined.
 
 Neither is grounds for rejection on its own, but the `vetted` line has to say so plainly: the skill lands in
-`~/.agents/skills` and every agent loads it. `disable-model-invocation: true` in the frontmatter makes it
+`skills/` and every agent loads it. `disable-model-invocation: true` in the frontmatter makes it
 explicit-request-only, capping the blast radius of one that is not fully usable yet.
 
 ## Updating
@@ -48,5 +48,4 @@ add `--dry-run` to report it and exit non-zero instead.
 
 ## Removing
 
-Delete the source directory. The rendered copy in `~/.agents/skills/` survives, because `chezmoi apply` only ensures
-targets still in the source state, so remove it by hand as well.
+`git rm -r skills/<name>`. Nothing else references it.

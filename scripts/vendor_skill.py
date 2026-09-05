@@ -2,7 +2,7 @@
 # requires-python = ">=3.11"
 # dependencies = ["pyyaml>=6", "rich>=13", "typer>=0.12"]
 # ///
-"""Sync vendored third-party skills in home/dot_agents/skills/ from upstream.
+"""Sync vendored third-party skills in skills/ from upstream.
 
 Each vendored skill carries a .provenance naming its upstream repo, the subpath
 the skill lives at, the pinned commit, and the vetting verdict. This script
@@ -25,18 +25,26 @@ import subprocess
 import tarfile
 import tempfile
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, NamedTuple
 
 import typer
 import yaml
 from rich.console import Console
 from rich.table import Table
 
-SKILLS_DIR = Path("home/dot_agents/skills")
-PROVENANCE = "dot_provenance"
+SKILLS_DIR = Path("skills")
+PROVENANCE = ".provenance"
 
 app = typer.Typer(help=__doc__, no_args_is_help=True, add_completion=False)
 console = Console()
+
+
+class Entry(NamedTuple):
+    """A file as it should exist on disk. For a symlink, data is the target."""
+
+    data: bytes
+    symlink: bool
+    executable: bool
 
 
 def fail(message: str) -> typer.Exit:
@@ -99,41 +107,47 @@ def fetch_subtree(slug: str, sha: str, path: str, into: Path) -> Path:
     return subtree
 
 
-def source_name(entry: Path) -> str:
-    """Encode a target file's attributes into a chezmoi source filename."""
-    name = entry.name
-    if name.startswith("."):
-        name = f"dot_{name.removeprefix('.')}"
-    if entry.is_symlink():
-        return f"symlink_{name}"
-    if entry.stat().st_mode & 0o100:
-        return f"executable_{name}"
-    return name
+def present(path: Path) -> bool:
+    """True for a dangling symlink too, which Path.exists() reports as missing."""
+    return path.is_symlink() or path.exists()
 
 
-def build_plan(subtree: Path, dest: Path) -> dict[Path, bytes]:
-    """Map each destination path to the bytes it should hold."""
+def read_entry(path: Path) -> Entry:
+    if path.is_symlink():
+        return Entry(str(path.readlink()).encode(), True, False)
+    return Entry(path.read_bytes(), False, bool(path.stat().st_mode & 0o100))
+
+
+def write_entry(path: Path, entry: Entry) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if present(path):
+        path.unlink()
+    if entry.symlink:
+        path.symlink_to(entry.data.decode())
+        return
+    path.write_bytes(entry.data)
+    path.chmod(0o755 if entry.executable else 0o644)
+
+
+def build_plan(subtree: Path, dest: Path) -> dict[Path, Entry]:
+    """Map each destination path to the entry it should hold."""
     if subtree.is_file():
-        return {dest / source_name(subtree): subtree.read_bytes()}
-
+        return {dest / subtree.name: read_entry(subtree)}
     plan = {}
     for entry in sorted(subtree.rglob("*")):
         if entry.is_dir() and not entry.is_symlink():
             continue
-        target = dest / entry.relative_to(subtree).parent / source_name(entry)
-        # chezmoi stores a symlink as a file holding its target path.
-        link = entry.readlink().name if entry.is_symlink() else None
-        plan[target] = f"{link}\n".encode() if link else entry.read_bytes()
+        plan[dest / entry.relative_to(subtree)] = read_entry(entry)
     return plan
 
 
-def plan_sync(name: str, data: dict[str, str], sha: str, tmp: Path) -> tuple[dict[Path, bytes], set[Path]]:
+def plan_sync(name: str, data: dict[str, str], sha: str, tmp: Path) -> tuple[dict[Path, Entry], set[Path]]:
     """Work needed to make the skill directory match upstream at sha."""
     subtree = fetch_subtree(repo_slug(data["source"]), sha, data["path"], tmp)
     dest = SKILLS_DIR / name
     plan = build_plan(subtree, dest)
-    writes = {p: c for p, c in plan.items() if not p.exists() or p.read_bytes() != c}
-    prunes = {p for p in dest.rglob("*") if p.is_file() and p.name != PROVENANCE} - set(plan)
+    writes = {p: e for p, e in plan.items() if not present(p) or read_entry(p) != e}
+    prunes = {p for p in dest.rglob("*") if (p.is_symlink() or p.is_file()) and p.name != PROVENANCE} - set(plan)
     return writes, prunes
 
 
@@ -206,7 +220,7 @@ def sync(
         with tempfile.TemporaryDirectory() as tmp:
             writes, prunes = plan_sync(name, data, sha, Path(tmp))
             for path in sorted(writes):
-                verb, style = ("update", "yellow") if path.exists() else ("add", "green")
+                verb, style = ("update", "yellow") if present(path) else ("add", "green")
                 console.print(f"  {verb:>6}  {path}", style=style)
             for path in sorted(prunes):
                 console.print(f"  {'prune':>6}  {path}", style="red")
@@ -216,9 +230,8 @@ def sync(
 
             if dry_run:
                 continue
-            for path, content in writes.items():
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_bytes(content)
+            for path, entry in writes.items():
+                write_entry(path, entry)
             for path in prunes:
                 path.unlink()
 
