@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import difflib
 import json
 import os
 import subprocess
@@ -28,8 +29,8 @@ import sys
 from pathlib import Path
 
 CHECKLIST = Path(".claude/skills/vendor-skill/SKILL.md")
-DIFF_BUDGET = 250_000
-MAX_TOKENS = 6000
+DIFF_BUDGET = 600_000
+MAX_TOKENS = 32_000
 
 
 def gh(*args: str) -> str:
@@ -60,6 +61,20 @@ def listing(repo: str, path: str, ref: str) -> list[dict]:
     return json.loads(result.stdout) if result.returncode == 0 else []
 
 
+def upstream_diff(slug: str, f: dict, old: str, new: str) -> str:
+    """Unified diff of one file between two upstream commits, built from both versions."""
+    before_path = f.get("previous_filename", f["filename"])
+    try:
+        before = "" if f["status"] == "added" else file_at(slug, before_path, old)
+        after = "" if f["status"] == "removed" else file_at(slug, f["filename"], new)
+    except UnicodeDecodeError:
+        return f"(binary: +{f['additions']} -{f['deletions']})"
+    lines = difflib.unified_diff(
+        before.splitlines(keepends=True), after.splitlines(keepends=True), f"a/{before_path}", f"b/{f['filename']}"
+    )
+    return "".join(lines) or f.get("patch") or "(no textual change)"
+
+
 def marker(model: str) -> str:
     return f"<!-- vendored-review:{model} -->"
 
@@ -78,11 +93,15 @@ def gather(repo: str, pr: str) -> dict[str, str]:
     compare = gh_json("api", f"repos/{slug}/compare/{old['commit']}...{new['commit']}")
     commits = "\n".join(f"- {c['sha'][:7]} {c['commit']['message'].splitlines()[0]}" for c in compare["commits"])
     diff, used = [], 0
-    for f in compare["files"]:
+    for f in sorted(compare["files"], key=lambda f: f["filename"]):
         if not f["filename"].startswith(new["path"]):
             continue
-        text = f.get("patch") or f"(binary or too large for the API: +{f['additions']} -{f['deletions']})"
-        block = f"--- {f['filename']} ({f['status']}, +{f['additions']} -{f['deletions']})\n{text}\n"
+        header = f"--- {f['filename']} ({f['status']}, +{f['additions']} -{f['deletions']})\n"
+        # Test bodies cost more tokens than they tell a vetter; the counts are enough.
+        if "/tests/" in f["filename"] or "_test." in f["filename"] or f["filename"].endswith("_test.py"):
+            diff.append(header)
+            continue
+        block = header + upstream_diff(slug, f, old["commit"], new["commit"]) + "\n"
         if used + len(block) > DIFF_BUDGET:
             diff.append(f"--- {f['filename']}: omitted, diff budget of {DIFF_BUDGET} characters reached\n")
             continue
@@ -190,9 +209,22 @@ def ask(model: str, system: str, user: str) -> str:
     if model.startswith("claude"):
         import anthropic
 
-        response = anthropic.Anthropic().messages.create(
-            model=model, max_tokens=MAX_TOKENS, system=system, messages=[{"role": "user", "content": user}]
-        )
+        # Thinking is always on for this tier and counts against max_tokens, so
+        # stream with room to spare; a policy decline reruns on the fallback model.
+        with anthropic.Anthropic().beta.messages.stream(
+            model=model,
+            max_tokens=MAX_TOKENS,
+            system=system,
+            messages=[{"role": "user", "content": user}],
+            betas=["server-side-fallback-2026-06-01"],
+            fallbacks=[{"model": "claude-opus-4-8"}],
+        ) as stream:
+            response = stream.get_final_message()
+        if response.stop_reason == "refusal":
+            details = response.stop_details
+            sys.exit(f"{model} declined the request: {getattr(details, 'category', None)}: {getattr(details, 'explanation', None)}")
+        print(f"{model}: served by {response.model}, stop_reason={response.stop_reason}, "
+              f"output_tokens={response.usage.output_tokens}", file=sys.stderr)
         return "".join(b.text for b in response.content if b.type == "text").strip()
     if model.startswith(("gpt", "o")):
         import openai
@@ -233,7 +265,7 @@ def main() -> None:
         return
     review = ask(opts.model, SYSTEM, user)
     if not review:
-        sys.exit("model returned no text")
+        sys.exit(f"{opts.model} returned no text")
     if opts.dry_run:
         print(review)
         return
