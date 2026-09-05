@@ -46,15 +46,9 @@ repo and a `run_after_` script runs `scripts/install`.
 ## Vendored skills
 
 `just skills check` reports which vendored skills changed upstream. `just skills sync` re-copies every pinned commit
-plus its patches, which heals a hand edit. `just skills patch NAME SLUG --why "..."` captures a hand edit as a patch
-instead. `just skills sync --latest NAME` moves one skill to the upstream head and logs a PENDING vetting entry until
-you read the new content.
-
-The `Vendored skills` workflow runs weekly and on demand (**Actions**, then **Run workflow**). For each skill that
-moved it opens one PR with the bump, then posts a model's review of the upstream diff: what changed, anything on the
-vetting checklist, whether each patch still applies with a proposed re-application when not, rules the model already
-follows by default, and a proposed vetting entry. One comment per model in the `REVIEW_MODELS` repository variable
-(default `["claude-fable-5-1"]`). Nothing merges on its own; reply `/merge` to the PR email to land it.
+plus its patches, which heals a hand edit. `just skills sync --latest NAME` moves one skill to the upstream head and
+logs a PENDING vetting entry until you read the new content. To review what moved, open a session here and follow the
+`vendor-skill` skill under `.claude/skills/`.
 
 ## Skills that chezmoi installs
 

@@ -51,29 +51,45 @@ Neither is grounds for rejection on its own, but the vetting entry has to say so
 and every agent loads it. `disable-model-invocation: true` in the frontmatter makes it explicit-request-only, capping
 the blast radius of one that is not fully usable yet.
 
-## Changing one
+## Changing one: mostly, don't
 
-Edit the files in place, then capture the edit:
+Vendored means verbatim. Put your changes outside the file, where they cannot conflict with upstream: the global
+instructions, a wrapper on PATH, config. The clean-exit gate and the P1 default for autoreview live in instructions.md
+and `~/bin/autoreview`, and have survived every upstream rewrite untouched.
+
+A patch is for a one-line mechanical change only, such as a frontmatter flag:
 
 ```bash
 just skills patch <name> <slug> --why "One line on why the change exists."
 ```
 
-That writes `skills/<name>/.patches/NNN-<slug>.patch`, the `--why` line as its header, and the sync is clean again.
-Patches apply in name order on every sync, so the copy on disk is always upstream plus patches and never a hand edit.
-The header is the record a later reviewer, human or model, reads to re-derive the change when upstream moves under it.
+That writes `skills/<name>/.patches/NNN-<slug>.patch` with the `--why` line as its header, and every sync applies it
+after copying upstream. When a patch stops applying, delete it and decide again. Never re-derive it: the conflict means
+upstream changed that spot, so read it fresh. If you want to reshape a skill, fork it (drop the provenance) or write
+your own, and accept that upstream fixes stop arriving.
+
+## Reviewing what moved
+
+Run this in a session in this repo when you want to know what upstream did since the pins.
+
+1. `just skills check` lists the skills that moved and how many files changed.
+2. For each one worth taking, `just skills sync --latest <name>`. The sync log names any patch that stopped
+   applying, and `.provenance.json` gets a PENDING vetting entry.
+3. Read the upstream change: `gh api repos/<owner>/<repo>/compare/<old>...<new>` gives the commits and per-file
+   patches. It omits `patch` for large files; fetch both versions with `gh api repos/<owner>/<repo>/contents/<path>?ref=<sha>`
+   and diff them. Skip test bodies; their line counts are enough.
+4. Report back, then stop: what changed for an agent's behaviour, anything on the vetting checklist above, patches
+   that broke, rules the current model already follows without being told, and a proposed vetting entry. A short page,
+   not a wall. Offer it as an artifact when a page reads better than the terminal.
+5. On garyj's go: capture any edit with `just skills patch`, replace the PENDING entry in `.provenance.json` with the
+   agreed one, commit.
 
 ## Updating
 
 `just skills check` reports which upstreams moved a skill's own bytes; unrelated commits in the same repo do not count.
 `just skills sync --latest <name>` takes the new content, applies the patches, and appends a PENDING entry to `vetted`
-naming any patch that no longer applies. A failed patch stays in `.patches/`, the file on disk is upstream without it,
-and every sync fails loudly until you fix or delete the patch. Re-vet, then replace the PENDING entry.
-
-Plain `just skills sync` re-copies the pinned commit, healing drift; add `--dry-run` to report it and exit non-zero.
-
-The `Vendored skills` workflow does the bump on a schedule or on demand: one branch and PR per moved skill, with a
-model's review of the upstream diff as a comment. See the README.
+naming any patch that no longer applies. Plain `just skills sync` re-copies the pinned commit, healing drift; add
+`--dry-run` to report it and exit non-zero.
 
 ## Removing
 
