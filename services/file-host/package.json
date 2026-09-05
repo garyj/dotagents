@@ -1,0 +1,29 @@
+{
+  "name": "@garyj/file-host",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "wrangler dev --local",
+    "types": "wrangler types",
+    "typecheck": "pnpm types && tsc --noEmit",
+    "lint": "eslint .",
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "test": "pnpm build && node --test tests/file-host.test.mjs",
+    "check": "pnpm typecheck && pnpm lint && pnpm test",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.13.3",
+    "eslint": "^10.9.1",
+    "globals": "^17.12.0",
+    "miniflare": "5.20260903.0-alpha",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.69.0",
+    "wrangler": "^4.129.0"
+  }
+}

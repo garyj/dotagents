@@ -42,6 +42,7 @@ repo and a `run_after_` script runs `scripts/install`.
   `skills/<name>/.patches/` holds any local changes as patch files. `scripts/vendor_skill.py` owns those
   directories. Read the `vendor-skill` skill under `.claude/skills/` before adding, updating, or removing one.
 - `scripts/install` makes the symlinks in the table above.
+- `services/file-host/` hosts agent attachments through Cloudflare Workers and R2. See its [setup guide](services/file-host/SETUP.md).
 
 ## Vendored skills
 
