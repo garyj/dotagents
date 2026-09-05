@@ -47,8 +47,9 @@ Complete local checks and independent review before requesting deployment approv
 11. Set `FILE_HOST_URL` to that HTTPS origin and `FILE_HOST_TOKEN` to the production token in your agents' environment.
 12. Use the file-upload skill to publish a harmless test image and recording. Verify the URL, headers, playback, and seeking.
 
-Keep account identifiers, the hostname, and tokens out of tracked files. This Wrangler configuration omits
-`routes`, leaving the custom-domain association in Cloudflare. It disables `workers.dev` and preview URLs.
+Keep account identifiers and token values out of tracked files. Agent defaults live in the file-upload skill.
+This Wrangler configuration omits `routes`, leaving the custom-domain association in Cloudflare.
+It disables `workers.dev` and preview URLs.
 After the initial deployment, `pnpm deploy` inherits the existing secret. To rotate the token, use
 `pnpm exec wrangler secret put FILE_HOST_TOKEN` and update your agents' environment.
 

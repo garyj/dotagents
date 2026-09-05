@@ -1,7 +1,7 @@
 # File host
 
 The file host stores agent uploads in a private R2 bucket and serves public URLs through a Worker.
-The upload hostname lives in Cloudflare's Custom Domain settings. It is absent from this repository.
+The upload hostname is configured in Cloudflare's Custom Domain settings and in the file-upload skill's defaults.
 The Worker returns links using the origin of the upload request.
 
 [Set up the service](SETUP.md). Agents use the [file-upload skill](../../skills/file-upload/SKILL.md).

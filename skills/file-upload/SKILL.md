@@ -14,16 +14,23 @@ Upload the selected file unchanged and return its link so the user can share it 
 
 ## Upload a file
 
-Read `FILE_HOST_URL` and `FILE_HOST_TOKEN` from the environment. The URL is the HTTPS origin of the upload service,
-without a file path. If either value is missing, report which variable is missing. Do not guess a hostname,
-print the token, or commit these values.
+Read `FILE_HOST_URL` and `FILE_HOST_TOKEN` from the environment. When either is unset, read it from 1Password
+with `op read`. The URL is the HTTPS origin of the upload service, without a file path. If a value is still
+missing after the lookup, report which one. Do not guess a hostname, print the token, or commit these values.
+
+| Variable | 1Password reference |
+| --- | --- |
+| `FILE_HOST_URL` | `op://AGLara/Agent Files Service - Cloudflare/URL` |
+| `FILE_HOST_TOKEN` | `op://AGLara/Agent Files Service - Cloudflare/password` |
 
 Upload one regular file, up to 100,000,000 bytes. Use this command with the selected local path:
 
 ```bash
 file='/absolute/path/to/recording.mp4'
-: "${FILE_HOST_URL:?FILE_HOST_URL is not set}"
-: "${FILE_HOST_TOKEN:?FILE_HOST_TOKEN is not set}"
+: "${FILE_HOST_URL:=$(op read 'op://AGLara/Agent Files Service - Cloudflare/URL')}"
+: "${FILE_HOST_TOKEN:=$(op read 'op://AGLara/Agent Files Service - Cloudflare/password')}"
+: "${FILE_HOST_URL:?FILE_HOST_URL is not set and the 1Password lookup failed}"
+: "${FILE_HOST_TOKEN:?FILE_HOST_TOKEN is not set and the 1Password lookup failed}"
 printf 'X-Upload-Token: %s\n' "$FILE_HOST_TOKEN" |
 	curl --silent --show-error --fail-with-body --globoff --proto '=https' \
 		--header @- --upload-file "$file" "${FILE_HOST_URL%/}/"
@@ -42,9 +49,16 @@ Verify the returned URL with `curl --silent --show-error --fail --head "$url"`. 
 ## Share the result
 
 - Embed PNG, JPEG, GIF, and WebP images as `![description](URL)`.
-- Link videos as `[Watch recording](URL)`. GitHub does not play externally hosted videos inline.
+- Link videos as `[Watch recording](URL)`. GitHub does not play externally hosted videos inline, so add a GIF
+  preview where one helps.
 - Link other files as `[Download filename](URL)`.
 - HTML, SVG, and other active formats download as attachments. They are not published as executable sites.
 
-For a short recording that benefits from an inline preview, create a GIF with ffmpeg, upload it separately,
-and embed the GIF above the full video link. Links last while the file and hosting remain available.
+`ffmpeg` is installed. For a clip shorter than about 30 seconds, make a GIF preview, upload it separately, and
+embed it above the full video link:
+
+```bash
+ffmpeg -i recording.mp4 -vf "fps=10,scale=800:-1" -loop 0 preview.gif
+```
+
+Links last while the file and hosting remain available.
