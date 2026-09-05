@@ -44,11 +44,11 @@ async function upload(request: Request, env: Env, pathname: string): Promise<Res
   } catch {
     return reply("Invalid filename.\n", 400);
   }
-  if (!name || name.length > 255 || /[/\\]/.test(name)) {
+  if (!name || /[/\\]/.test(name)) {
     return reply("Use one filename, without directories.\n", 400);
   }
   name = name.normalize("NFKD").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^[.-]+/, "");
-  if (!name) return reply("Invalid filename.\n", 400);
+  if (!name || name.length > 255) return reply("Invalid filename.\n", 400);
 
   const lengthHeader = request.headers.get("Content-Length");
   if (lengthHeader === null) return reply("Content-Length is required.\n", 411);

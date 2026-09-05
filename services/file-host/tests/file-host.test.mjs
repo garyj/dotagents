@@ -126,7 +126,7 @@ test("forces HTML, SVG, unknown formats, and prototype property names to downloa
 });
 
 test("rejects path names and malformed URL encoding", async () => {
-  for (const name of ["folder/file.png", "folder\\file.png", "a".repeat(256), "..."]) {
+  for (const name of ["folder/file.png", "folder\\file.png", "a".repeat(256), "\uFB03".repeat(255), "..."]) {
     assert.equal((await upload(name)).status, 400);
   }
   const response = await runtime.dispatchFetch("https://files.example.com/%ZZ", {
