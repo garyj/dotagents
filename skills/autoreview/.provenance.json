@@ -1,7 +1,7 @@
 {
   "source": "https://github.com/openclaw/agent-skills",
   "path": "skills/autoreview",
-  "commit": "3f392d7531673127ebfa9ed87148e64c26c8153f",
+  "commit": "ec10c1ce9b37b63260fa782259f5e71893f99ede",
   "vetted": [
     "2026-08-23 delta audit vs a504fd8, verdict RUN WITH CAVEATS",
     "2026-09-05 delta audit vs 128a4ea (GPT 5.6 Sol + Fable 5.1 on PR #1), verdict RUN: exit 2 = incomplete, pass cap gone, wrapper flags intact"
