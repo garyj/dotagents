@@ -36,7 +36,8 @@ The service does not block crawling through `robots.txt`, because crawlers must 
 
 File responses allow caching for one hour. Copies may remain in browser or GitHub caches after removal from R2.
 Files have no automatic expiry. Direct bucket publication, Worker preview URLs, and `workers.dev` access are
-not part of this setup. Request invocation logs are disabled; application error logs omit URLs and tokens.
+not part of this setup. Workers Logs records the method, URL, and status of every request, so the Cloudflare
+dashboard shows which files are fetched and how often. Application error logs omit URLs and tokens.
 
 ## Project commands
 
