@@ -1,8 +1,9 @@
 {
   "source": "https://github.com/openclaw/agent-skills",
   "path": "skills/autoreview",
-  "commit": "128a4ea60a93badf0d6d8f3381057f93f7085b29",
+  "commit": "3f392d7531673127ebfa9ed87148e64c26c8153f",
   "vetted": [
-    "2026-08-23 delta audit vs a504fd8, verdict RUN WITH CAVEATS"
+    "2026-08-23 delta audit vs a504fd8, verdict RUN WITH CAVEATS",
+    "2026-09-05 PENDING: bumped 128a4ea -> 3f392d7"
   ]
 }
