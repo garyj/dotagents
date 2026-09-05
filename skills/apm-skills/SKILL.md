@@ -77,8 +77,3 @@ manifest, deploying to each harness's own config layout.
 - The PyPI packages named `apm` and `apm-cli` are unrelated projects; APM ships as GitHub release tarballs. Never
   install it from PyPI.
 - When the binary comes from a version manager (mise etc.), don't use `apm self-update`; it fights the manager.
-
-## Appendix: version notes
-
-- apm <= 0.26.0 rewrites `generated_at` in `apm.lock.yaml` on every `apm install`/`apm lock` even when nothing
-  changed, which intermittently trips lockfile-in-sync git hooks. Fixed in v0.27.0 (microsoft/apm#2306).
