@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
+  <title>__TITLE__ | Agent postmortem</title>
+  <style>
+    :root { color-scheme: light; --ink: #21312e; --muted: #53645e; --line: #d7ded6; --paper: #fafbf7; --accent: #245d4a; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #eef1e9; color: var(--ink); font: 17px/1.65 system-ui, sans-serif; }
+    main { max-width: 1050px; margin: 36px auto; padding: 46px 58px; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; }
+    a { color: var(--accent); text-underline-offset: 3px; overflow-wrap: anywhere; }
+    a:focus-visible, summary:focus-visible { outline: 3px solid #985c09; outline-offset: 4px; }
+    h1, h2, h3 { line-height: 1.25; letter-spacing: -.025em; }
+    h1 { font-size: clamp(1.9rem, 5vw, 3rem); margin: 12px 0 18px; }
+    h2 { font-size: 1.5rem; margin: 0 0 20px; }
+    h3 { font-size: 1.1rem; margin: 0 0 12px; }
+    p { margin: 0 0 16px; }
+    .eyebrow { color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .13em; }
+    .tldr { padding: 22px; margin: 24px 0; border: 1px solid var(--line); border-radius: 6px; background: #e4eee6; }
+    .tldr h2 { font-size: 1.1rem; margin-bottom: 14px; }
+    .tldr dl { margin: 0; }
+    .tldr dd { margin: 3px 0 14px; }
+    .tldr dd:last-child { margin-bottom: 0; }
+    .meta { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 8px 18px; font-size: .9rem; margin: 26px 0; }
+    dt { font-weight: 650; }
+    dd { margin: 0; overflow-wrap: anywhere; }
+    section { padding-top: 34px; scroll-margin-top: 20px; }
+    article { border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 5px; padding: 22px; margin-bottom: 18px; }
+    ul, ol { padding-left: 24px; }
+    li { margin-bottom: 8px; }
+    details { margin: 12px 0; border: 1px solid var(--line); border-radius: 5px; padding: 14px 18px; }
+    summary { cursor: pointer; font-weight: 650; overflow-wrap: anywhere; }
+    details[open] summary { margin-bottom: 14px; }
+    blockquote { margin: 14px 0; padding-left: 18px; border-left: 3px solid var(--line); }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .83rem; padding: 16px; background: #edf0ea; border-radius: 4px; }
+    code { font-size: .88em; overflow-wrap: anywhere; }
+    img { max-width: 100%; height: auto; }
+    .source { color: var(--muted); font-size: .82rem; overflow-wrap: anywhere; }
+    footer { margin-top: 36px; border-top: 1px solid var(--line); padding-top: 18px; color: var(--muted); font-size: .85rem; }
+    @media (max-width: 650px) {
+      main { margin: 0; padding: 26px 20px; border: 0; border-radius: 0; }
+      .meta { grid-template-columns: 1fr; gap: 3px; }
+      dd { margin-bottom: 12px; }
+      article { padding: 17px; }
+    }
+    @media print {
+      body, main { background: white; }
+      main { margin: 0; padding: 0; max-width: none; border: 0; }
+      article { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <p class="eyebrow">Agent postmortem · __CASE_ID__</p>
+    <h1>__TITLE__</h1>
+    <div class="tldr" role="region" aria-labelledby="tldr-title">
+      <h2 id="tldr-title">TLDR</h2>
+      <dl>
+        <dt>What happened</dt>
+        <dd>__HAPPENED_HTML__</dd>
+        <dt>How it failed</dt>
+        <dd>__FAILED_HTML__</dd>
+        <dt>How to fix it</dt>
+        <dd>__FIX_HTML__</dd>
+      </dl>
+    </div>
+    <dl class="meta">__METADATA_HTML__</dl>
+  </header>
+  <section id="findings" aria-labelledby="findings-title">
+    <h2 id="findings-title">What happened and why</h2>
+    __FINDINGS_HTML__
+  </section>
+  <section id="suggestions" aria-labelledby="suggestions-title">
+    <h2 id="suggestions-title">Suggested corrections</h2>
+    __SUGGESTIONS_HTML__
+  </section>
+  <section id="uncertainty" aria-labelledby="uncertainty-title">
+    <h2 id="uncertainty-title">What remains uncertain</h2>
+    __UNCERTAINTY_HTML__
+  </section>
+  <section id="evidence" aria-labelledby="evidence-title">
+    <h2 id="evidence-title">Source evidence</h2>
+    __EVIDENCE_HTML__
+  </section>
+  <footer>Local retrospective. Suggestions are proposals unless an outcome is explicitly supported by evidence.</footer>
+</main>
+</body>
+</html>
