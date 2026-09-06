@@ -75,6 +75,7 @@ Checks must pass; report unresolved failures without claiming completion. If a p
 - **Docs, RFCs, readmes, commit and PR bodies:** read `~/.agents/skills/technical-writing/SKILL.md` first. It is explicit-invoke only, so the Skill tool never lists it.
 - **No em-dashes** (—) anywhere.
 - Lead with the answer.
+- **Expand acronyms on first use:** Average Contract Value (ACV), then ACV.
 - **Every deliverable gets its path or URL in the reply:** the file, the PR, the draft, the report.
 - Before browser automation, check for an API, an MCP server, or a connector already in the repo or this session. Use the browser only when none exists.
 - Python: `uv` for everything (`uv add`, `uv run`). No poetry, pip, or easy_install. Every project has a `pyproject.toml`; if not, `uv init`.
