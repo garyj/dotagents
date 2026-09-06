@@ -1,4 +1,5 @@
 const MAX_UPLOAD_BYTES = 100_000_000;
+const KEY_PATTERN = /^\/[0-9a-f-]{36}\/[a-zA-Z0-9_][a-zA-Z0-9._-]*$/;
 const INLINE_TYPES: Record<string, string> = {
   png: "image/png",
   jpg: "image/jpeg",
@@ -38,17 +39,26 @@ async function upload(request: Request, env: Env, pathname: string): Promise<Res
     return reply("Invalid upload token.\n", 401);
   }
 
+  const replacing = KEY_PATTERN.test(pathname);
+  let key: string;
   let name: string;
-  try {
-    name = decodeURIComponent(pathname.slice(1));
-  } catch {
-    return reply("Invalid filename.\n", 400);
+  if (replacing) {
+    key = pathname.slice(1);
+    name = key.slice(key.indexOf("/") + 1);
+    if (!(await env.FILES.head(key))) return reply("Not found.\n", 404);
+  } else {
+    try {
+      name = decodeURIComponent(pathname.slice(1));
+    } catch {
+      return reply("Invalid filename.\n", 400);
+    }
+    if (!name || /[/\\]/.test(name)) {
+      return reply("Use one filename, without directories.\n", 400);
+    }
+    name = name.normalize("NFKD").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^[.-]+/, "");
+    if (!name || name.length > 255) return reply("Invalid filename.\n", 400);
+    key = `${crypto.randomUUID()}/${name}`;
   }
-  if (!name || /[/\\]/.test(name)) {
-    return reply("Use one filename, without directories.\n", 400);
-  }
-  name = name.normalize("NFKD").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^[.-]+/, "");
-  if (!name || name.length > 255) return reply("Invalid filename.\n", 400);
 
   const lengthHeader = request.headers.get("Content-Length");
   if (lengthHeader === null) return reply("Content-Length is required.\n", 411);
@@ -60,7 +70,6 @@ async function upload(request: Request, env: Env, pathname: string): Promise<Res
 
   const extension = name.split(".").at(-1)?.toLowerCase() ?? "";
   const inlineType = Object.hasOwn(INLINE_TYPES, extension) ? INLINE_TYPES[extension] : undefined;
-  const key = `${crypto.randomUUID()}/${name}`;
   await env.FILES.put(key, request.body ?? new Uint8Array(), {
     httpMetadata: {
       contentType: inlineType ?? "application/octet-stream",
@@ -68,7 +77,7 @@ async function upload(request: Request, env: Env, pathname: string): Promise<Res
     },
   });
   const publicUrl = `${new URL(request.url).origin}/${key}`;
-  return reply(`${publicUrl}\n`, 201, {
+  return reply(`${publicUrl}\n`, replacing ? 200 : 201, {
     "Content-Type": "text/plain; charset=utf-8",
     Location: publicUrl,
   });
@@ -92,9 +101,7 @@ function byteRange(value: string, size: number): { offset: number; length: numbe
 }
 
 async function download(request: Request, env: Env, pathname: string): Promise<Response> {
-  if (!/^\/[0-9a-f-]{36}\/[a-zA-Z0-9_][a-zA-Z0-9._-]*$/.test(pathname)) {
-    return reply("Not found.\n", 404);
-  }
+  if (!KEY_PATTERN.test(pathname)) return reply("Not found.\n", 404);
   const key = pathname.slice(1);
   const metadata = await env.FILES.head(key);
   if (!metadata) return reply("Not found.\n", 404);
@@ -108,7 +115,7 @@ async function download(request: Request, env: Env, pathname: string): Promise<R
   headers.set("ETag", metadata.httpEtag);
   headers.set("Last-Modified", metadata.uploaded.toUTCString());
   headers.set("Accept-Ranges", "bytes");
-  headers.set("Cache-Control", "public, max-age=3600");
+  headers.set("Cache-Control", "no-cache");
 
   const ifNoneMatch = request.headers.get("If-None-Match");
   if (ifNoneMatch?.split(",").some((etag) => {

@@ -23,12 +23,16 @@ before(async () => {
 
 after(async () => { await runtime?.dispose(); });
 
-async function upload(name, body = "file contents", headers = {}) {
-  return runtime.dispatchFetch(`https://files.example.com/${encodeURIComponent(name)}`, {
+async function put(url, body, headers = {}) {
+  return runtime.dispatchFetch(url, {
     method: "PUT",
     headers: { "X-Upload-Token": token, "Content-Length": String(Buffer.byteLength(body)), ...headers },
     body,
   });
+}
+
+async function upload(name, body = "file contents", headers = {}) {
+  return put(`https://files.example.com/${encodeURIComponent(name)}`, body, headers);
 }
 
 async function publishedUrl(response) {
@@ -223,17 +227,38 @@ test("supports HEAD and conditional downloads", async () => {
   assert.equal(await changed.text(), "0123456789");
 });
 
-test("has no public listing, overwrite, or delete endpoint", async () => {
+test("has no public listing or delete endpoint", async () => {
   const url = await publishedUrl(await upload("retained.png"));
   for (const path of ["/", "/robots.txt", "/unknown", "/00000000-0000-0000-0000-000000000000/missing.png"]) {
     assert.equal((await runtime.dispatchFetch(`https://files.example.com${path}`)).status, 404);
   }
   assert.equal((await runtime.dispatchFetch(url, { method: "DELETE" })).status, 405);
-  const overwrite = await runtime.dispatchFetch(url, {
-    method: "PUT", headers: { "X-Upload-Token": token }, body: "replacement",
-  });
-  assert.equal(overwrite.status, 400);
   assert.equal(await (await runtime.dispatchFetch(url)).text(), "file contents");
+});
+
+test("replaces a file in place when its URL is uploaded to again", async () => {
+  const url = await publishedUrl(await upload("report.html", "<h1>Draft</h1>"));
+  const original = (await runtime.dispatchFetch(url, { method: "HEAD" })).headers.get("ETag");
+  const replaced = await put(url, "<h1>Final</h1>");
+  assert.equal(replaced.status, 200, await replaced.clone().text());
+  assert.equal((await replaced.text()).trim(), url);
+  const preview = await runtime.dispatchFetch(`${url}?preview=1`);
+  assert.equal(await preview.text(), "<h1>Final</h1>");
+  assert.equal(preview.headers.get("Content-Type"), "text/html; charset=utf-8");
+  assert.equal(preview.headers.get("Cache-Control"), "no-cache");
+  assert.notEqual(preview.headers.get("ETag"), original);
+  assert.equal((await runtime.dispatchFetch(url, { headers: { "If-None-Match": original } })).status, 200);
+});
+
+test("refuses to replace a missing file or one under another name", async () => {
+  const url = await publishedUrl(await upload("keep.png", "original"));
+  const directory = url.slice(0, url.lastIndexOf("/"));
+  for (const target of [`${directory}/other.png`, `https://files.example.com/${randomUUID()}/keep.png`]) {
+    assert.equal((await put(target, "replacement")).status, 404);
+    assert.equal((await runtime.dispatchFetch(target)).status, 404);
+  }
+  assert.equal((await put(url, "replacement", { "X-Upload-Token": "incorrect" })).status, 401);
+  assert.equal(await (await runtime.dispatchFetch(url)).text(), "original");
 });
 
 test("accepts an empty file", async () => {
