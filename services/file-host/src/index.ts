@@ -26,18 +26,24 @@ function reply(body: BodyInit | null, status = 200, headers?: HeadersInit): Resp
   return result;
 }
 
-async function upload(request: Request, env: Env, pathname: string): Promise<Response> {
-  if (!env.FILE_HOST_TOKEN) return reply("Upload service is not configured.\n", 503);
+async function authorize(request: Request, env: Env): Promise<Response | undefined> {
+  if (!env.FILE_HOST_TOKEN) return reply("File service is not configured.\n", 503);
   const token = request.headers.get("X-Upload-Token");
-  if (!token) return reply("Invalid upload token.\n", 401);
+  if (!token) return reply("Invalid token.\n", 401);
   const encoder = new TextEncoder();
   const [provided, expected] = await Promise.all([
     crypto.subtle.digest("SHA-256", encoder.encode(token)),
     crypto.subtle.digest("SHA-256", encoder.encode(env.FILE_HOST_TOKEN)),
   ]);
   if (!crypto.subtle.timingSafeEqual(provided, expected)) {
-    return reply("Invalid upload token.\n", 401);
+    return reply("Invalid token.\n", 401);
   }
+  return undefined;
+}
+
+async function upload(request: Request, env: Env, pathname: string): Promise<Response> {
+  const denied = await authorize(request, env);
+  if (denied) return denied;
 
   const replacing = KEY_PATTERN.test(pathname);
   let key: string;
@@ -144,6 +150,16 @@ async function download(request: Request, env: Env, pathname: string): Promise<R
   return reply(object.body, range ? 206 : 200, headers);
 }
 
+async function remove(request: Request, env: Env, pathname: string): Promise<Response> {
+  const denied = await authorize(request, env);
+  if (denied) return denied;
+  if (!KEY_PATTERN.test(pathname)) return reply("Not found.\n", 404);
+  const key = pathname.slice(1);
+  if (!(await env.FILES.head(key))) return reply("Not found.\n", 404);
+  await env.FILES.delete(key);
+  return reply(null, 204);
+}
+
 export default {
   async fetch(request, env): Promise<Response> {
     try {
@@ -154,8 +170,10 @@ export default {
         case "GET":
         case "HEAD":
           return await download(request, env, pathname);
+        case "DELETE":
+          return await remove(request, env, pathname);
         default:
-          return reply("Method not allowed.\n", 405, { Allow: "GET, HEAD, PUT" });
+          return reply("Method not allowed.\n", 405, { Allow: "DELETE, GET, HEAD, PUT" });
       }
     } catch {
       console.error(JSON.stringify({ event: "file_host_request_failed", method: request.method }));

@@ -227,13 +227,27 @@ test("supports HEAD and conditional downloads", async () => {
   assert.equal(await changed.text(), "0123456789");
 });
 
-test("has no public listing or delete endpoint", async () => {
+test("has no public listing endpoint and rejects other methods", async () => {
   const url = await publishedUrl(await upload("retained.png"));
   for (const path of ["/", "/robots.txt", "/unknown", "/00000000-0000-0000-0000-000000000000/missing.png"]) {
     assert.equal((await runtime.dispatchFetch(`https://files.example.com${path}`)).status, 404);
   }
-  assert.equal((await runtime.dispatchFetch(url, { method: "DELETE" })).status, 405);
+  const post = await runtime.dispatchFetch(url, { method: "POST", headers: { "X-Upload-Token": token }, body: "x" });
+  assert.equal(post.status, 405);
+  assert.equal(post.headers.get("Allow"), "DELETE, GET, HEAD, PUT");
   assert.equal(await (await runtime.dispatchFetch(url)).text(), "file contents");
+});
+
+test("deletes a file with the token and then serves 404", async () => {
+  const url = await publishedUrl(await upload("gone.png"));
+  assert.equal((await runtime.dispatchFetch(url, { method: "DELETE" })).status, 401);
+  assert.equal(await (await runtime.dispatchFetch(url)).text(), "file contents");
+  const removed = await runtime.dispatchFetch(url, { method: "DELETE", headers: { "X-Upload-Token": token } });
+  assert.equal(removed.status, 204);
+  assert.equal(await removed.text(), "");
+  assert.equal((await runtime.dispatchFetch(url)).status, 404);
+  const again = await runtime.dispatchFetch(url, { method: "DELETE", headers: { "X-Upload-Token": token } });
+  assert.equal(again.status, 404);
 });
 
 test("replaces a file in place when its URL is uploaded to again", async () => {
