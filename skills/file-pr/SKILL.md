@@ -11,7 +11,7 @@ If the working tree has uncommitted changes, stop and say so. Do not stash them 
 
 If you are on the default branch, move the commits to a new branch and reset the local default branch to its remote. Never push to the default branch unless the user asks for it.
 
-Review the diff locally against the default branch to make sure its contents match the goal.
+Review the diff locally against the remote default branch to make sure its contents match the goal. List the branch's commits with `git log origin/<default>..HEAD`. If any commit is not this change, the local default branch is ahead of its remote and the branch inherited its commits. Rebase them out with `git rebase --onto origin/<default> <default>` before pushing.
 
 PR titles usually become commit messages, so follow the repository's title conventions. Look at recently merged PRs and Git history for examples. Prefer a concise, human-readable title that explains why the change matters:
 

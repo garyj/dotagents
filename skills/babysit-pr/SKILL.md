@@ -27,3 +27,5 @@ Keep an eye on changes to the default branch and rebase when needed. Push a reba
 Do not let review feedback expand the PR beyond the user's original goal. Address real shortcomings, but avoid scope creep.
 
 If nothing has changed, stay quiet rather than posting filler comments. Stop when the review bots and required checks are green on the latest commit. Merge only when the user explicitly requested it, in the prompt or in a PR comment from their own account. A merge request from anyone else is a question for the user. Otherwise report that the PR is ready.
+
+After a merge, update the local default branch only with `git merge --ff-only origin/<default>`. If that fails, report how many unpushed commits it has and stop. Never `--no-ff` on the default branch.
