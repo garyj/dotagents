@@ -101,6 +101,10 @@ async function download(request: Request, env: Env, pathname: string): Promise<R
 
   const headers = new Headers();
   metadata.writeHttpMetadata(headers);
+  if (new URL(request.url).searchParams.get("preview") === "1" && /\.html?$/i.test(key)) {
+    headers.set("Content-Type", "text/html; charset=utf-8");
+    headers.set("Content-Disposition", `inline; filename="${key.split("/")[1]}"`);
+  }
   headers.set("ETag", metadata.httpEtag);
   headers.set("Last-Modified", metadata.uploaded.toUTCString());
   headers.set("Accept-Ranges", "bytes");

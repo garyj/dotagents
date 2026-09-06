@@ -12,6 +12,7 @@ The Worker returns links using the origin of the upload request.
 | --- | --- |
 | `PUT /filename` with `X-Upload-Token` | Stores a new object and returns its URL with HTTP 201 |
 | `GET /uuid/filename` | Returns the public file |
+| `GET /uuid/report.html?preview=1` | Displays HTML in the browser |
 | `HEAD /uuid/filename` | Returns metadata without the file body |
 | `GET` with a single byte `Range` | Returns HTTP 206, or HTTP 416 for an invalid range |
 | `GET` or `HEAD` with a matching `If-None-Match` | Returns HTTP 304 |
@@ -29,6 +30,12 @@ Empty files are supported. Multipart uploads are not implemented.
 PNG, JPEG, GIF, WebP, AVIF, MP4, WebM, MOV, MP3, WAV, and OGG have inline media types based on their extensions.
 Browser playback depends on the codec. Other formats, including HTML, SVG, PDF, and ZIP, use
 `application/octet-stream` and download as attachments. Client-supplied content types are not trusted.
+
+Append `?preview=1` to a `.html` or `.htm` URL to display it as `text/html; charset=utf-8` with an inline
+disposition. Extension matching is case-insensitive. Removing the query restores the download. This works
+for existing uploads and for GET, HEAD, conditional, and range requests. Other formats ignore the option.
+HTML previews have no sandbox or added Content Security Policy, so links, scripts, exports, print buttons,
+and forms follow normal browser rules. Use self-contained HTML; the service does not bundle local assets.
 
 All responses include `X-Robots-Tag: noindex, nofollow`, `X-Content-Type-Options: nosniff`, and
 `Referrer-Policy: no-referrer`. These headers do not authenticate readers or prevent someone from sharing a URL.

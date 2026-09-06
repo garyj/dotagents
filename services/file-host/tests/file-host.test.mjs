@@ -125,6 +125,47 @@ test("forces HTML, SVG, unknown formats, and prototype property names to downloa
   }
 });
 
+test("previews existing HTML uploads and preserves the download URL", async () => {
+  const html = '<!doctype html><meta charset="utf-8"><h1>Owner report</h1><script>document.title = "Report"</script>';
+  for (const name of ["report.html", "report.HTM"]) {
+    const url = await publishedUrl(await upload(name, html));
+    const preview = `${url}?preview=1`;
+    for (const method of ["GET", "HEAD"]) {
+      const response = await runtime.dispatchFetch(preview, { method });
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get("Content-Type"), "text/html; charset=utf-8");
+      assert.equal(response.headers.get("Content-Disposition"), `inline; filename="${name}"`);
+      assert.equal(response.headers.get("Content-Security-Policy"), null);
+      assert.equal(response.headers.get("X-Robots-Tag"), "noindex, nofollow");
+      if (method === "HEAD") assert.equal(response.headers.get("Content-Length"), String(Buffer.byteLength(html)));
+      assert.equal(await response.text(), method === "HEAD" ? "" : html);
+    }
+    const head = await runtime.dispatchFetch(preview, { method: "HEAD" });
+    const cached = await runtime.dispatchFetch(preview, { headers: { "If-None-Match": head.headers.get("ETag") } });
+    assert.equal(cached.status, 304);
+    assert.equal(cached.headers.get("Content-Type"), "text/html; charset=utf-8");
+    const range = await runtime.dispatchFetch(preview, { headers: { Range: "bytes=0-14" } });
+    assert.equal(range.status, 206);
+    assert.equal(range.headers.get("Content-Type"), "text/html; charset=utf-8");
+    assert.equal(await range.text(), html.slice(0, 15));
+    for (const query of ["", "?preview=0", "?preview=true"]) {
+      const download = await runtime.dispatchFetch(`${url}${query}`);
+      assert.equal(download.headers.get("Content-Type"), "application/octet-stream");
+      assert.equal(download.headers.get("Content-Disposition"), `attachment; filename="${name}"`);
+      assert.equal(await download.text(), html);
+    }
+  }
+});
+
+test("preview does not change other file formats", async () => {
+  for (const [name, contentType] of [["image.png", "image/png"], ["diagram.svg", "application/octet-stream"], ["report.pdf", "application/octet-stream"]]) {
+    const url = await publishedUrl(await upload(name));
+    const response = await runtime.dispatchFetch(`${url}?preview=1`);
+    assert.equal(response.headers.get("Content-Type"), contentType);
+    assert.equal(await response.text(), "file contents");
+  }
+});
+
 test("rejects path names and malformed URL encoding", async () => {
   for (const name of ["folder/file.png", "folder\\file.png", "a".repeat(256), "\uFB03".repeat(255), "..."]) {
     assert.equal((await upload(name)).status, 400);
