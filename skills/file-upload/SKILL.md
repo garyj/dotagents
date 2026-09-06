@@ -1,6 +1,6 @@
 ---
 name: file-upload
-description: Upload a file and return a shareable public link when the user asks to share a PDF, ZIP, document, image, video, or other file. Works for email links, messages, PRs, and comments.
+description: Upload a file and return a shareable public link when the user asks to share a PDF, ZIP, document, image, video, or other file, or to update a file at a link that was already shared. Works for email links, messages, PRs, and comments.
 ---
 
 # File upload
@@ -45,6 +45,26 @@ an upload after a connection failure: the first upload might already have succee
 
 Verify the returned URL with `curl --silent --show-error --fail --head "$url"`. Check the HTTP status and
 `Content-Type` before embedding it.
+
+## Replace a file
+
+To update a file that is already shared, upload the new version to its existing URL. The URL and any `?preview=1`
+link stay the same, so nobody needs a new link. The local filename does not need to match. The previous content
+is gone; the service keeps no history.
+
+```bash
+file='/absolute/path/to/report.html'
+url='https://files.example.com/uuid/report.html'
+: "${FILE_HOST_TOKEN:=$(op read 'op://AGLara/Agent Files Service - Cloudflare/password')}"
+: "${FILE_HOST_TOKEN:?FILE_HOST_TOKEN is not set and the 1Password lookup failed}"
+printf 'X-Upload-Token: %s\n' "$FILE_HOST_TOKEN" |
+	curl --silent --show-error --fail-with-body --globoff --proto '=https' \
+		--header @- --upload-file "$file" "$url"
+```
+
+A successful replacement returns HTTP 200 with the same URL, and it is safe to retry. HTTP 404 means nothing
+exists at that URL, so check the link. Do not fall back to a root upload: that creates a separate file with a
+new link.
 
 ## Share the result
 

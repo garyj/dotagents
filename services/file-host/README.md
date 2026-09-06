@@ -11,6 +11,7 @@ The Worker returns links using the origin of the upload request.
 | Request | Result |
 | --- | --- |
 | `PUT /filename` with `X-Upload-Token` | Stores a new object and returns its URL with HTTP 201 |
+| `PUT /uuid/filename` with `X-Upload-Token` | Replaces the object at that URL and returns the URL with HTTP 200 |
 | `GET /uuid/filename` | Returns the public file |
 | `GET /uuid/report.html?preview=1` | Displays HTML in the browser |
 | `HEAD /uuid/filename` | Returns metadata without the file body |
@@ -20,10 +21,12 @@ The Worker returns links using the origin of the upload request.
 
 Uploads require a valid `FILE_HOST_TOKEN` and a `Content-Length` no greater than 100,000,000 bytes.
 HTTP 401 means the token is missing or incorrect. HTTP 411 means the length is missing. HTTP 413 means the file
-is too large. A missing server token disables uploads with HTTP 503. Storage failures return HTTP 500.
+is too large. HTTP 404 on a replacement means nothing exists at that path. A missing server token disables
+uploads with HTTP 503. Storage failures return HTTP 500.
 
-Each upload gets a new UUID directory. The service exposes no listing, overwrite, or deletion API.
-Empty files are supported. Multipart uploads are not implemented.
+Each upload to the root gets a new UUID directory. Uploading to an existing object's path replaces it and keeps
+the URL, so shared links and `?preview=1` links stay valid. The previous content is gone: the service keeps no
+versions and exposes no listing or deletion API. Empty files are supported. Multipart uploads are not implemented.
 
 ## File display and privacy
 
@@ -41,7 +44,8 @@ All responses include `X-Robots-Tag: noindex, nofollow`, `X-Content-Type-Options
 `Referrer-Policy: no-referrer`. These headers do not authenticate readers or prevent someone from sharing a URL.
 The service does not block crawling through `robots.txt`, because crawlers must fetch a URL to see `noindex`.
 
-File responses allow caching for one hour. Copies may remain in browser or GitHub caches after removal from R2.
+File responses use `Cache-Control: no-cache`, so browsers revalidate with the ETag on every visit and pick up a
+replacement straight away. Other caches, such as GitHub's image proxy, may hold a copy for a while.
 Files have no automatic expiry. Direct bucket publication, Worker preview URLs, and `workers.dev` access are
 not part of this setup. Workers Logs records the method, URL, and status of every request, so the Cloudflare
 dashboard shows which files are fetched and how often. Application error logs omit URLs and tokens.
