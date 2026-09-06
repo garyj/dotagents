@@ -29,14 +29,14 @@ function reply(body: BodyInit | null, status = 200, headers?: HeadersInit): Resp
 async function authorize(request: Request, env: Env): Promise<Response | undefined> {
   if (!env.FILE_HOST_TOKEN) return reply("File service is not configured.\n", 503);
   const token = request.headers.get("X-Upload-Token");
-  if (!token) return reply("Invalid upload token.\n", 401);
+  if (!token) return reply("Invalid token.\n", 401);
   const encoder = new TextEncoder();
   const [provided, expected] = await Promise.all([
     crypto.subtle.digest("SHA-256", encoder.encode(token)),
     crypto.subtle.digest("SHA-256", encoder.encode(env.FILE_HOST_TOKEN)),
   ]);
   if (!crypto.subtle.timingSafeEqual(provided, expected)) {
-    return reply("Invalid upload token.\n", 401);
+    return reply("Invalid token.\n", 401);
   }
   return undefined;
 }
