@@ -12,6 +12,7 @@ The Worker returns links using the origin of the upload request.
 | --- | --- |
 | `PUT /filename` with `X-Upload-Token` | Stores a new object and returns its URL with HTTP 201 |
 | `PUT /uuid/filename` with `X-Upload-Token` | Replaces the object at that URL and returns the URL with HTTP 200 |
+| `DELETE /uuid/filename` with `X-Upload-Token` | Removes the object and returns HTTP 204 |
 | `GET /uuid/filename` | Returns the public file |
 | `GET /uuid/report.html?preview=1` | Displays HTML in the browser |
 | `HEAD /uuid/filename` | Returns metadata without the file body |
@@ -19,14 +20,15 @@ The Worker returns links using the origin of the upload request.
 | `GET` or `HEAD` with a matching `If-None-Match` | Returns HTTP 304 |
 | Other methods | Returns HTTP 405 |
 
-Uploads require a valid `FILE_HOST_TOKEN` and a `Content-Length` no greater than 100,000,000 bytes.
-HTTP 401 means the token is missing or incorrect. HTTP 411 means the length is missing. HTTP 413 means the file
-is too large. HTTP 404 on a replacement means nothing exists at that path. A missing server token disables
-uploads with HTTP 503. Storage failures return HTTP 500.
+Uploads and deletions require a valid `FILE_HOST_TOKEN`. Uploads also need a `Content-Length` no greater than
+100,000,000 bytes. HTTP 401 means the token is missing or incorrect. HTTP 411 means the length is missing.
+HTTP 413 means the file is too large. HTTP 404 on a replacement or deletion means nothing exists at that path.
+A missing server token disables uploads and deletions with HTTP 503. Storage failures return HTTP 500.
 
 Each upload to the root gets a new UUID directory. Uploading to an existing object's path replaces it and keeps
-the URL, so shared links and `?preview=1` links stay valid. The previous content is gone: the service keeps no
-versions and exposes no listing or deletion API. Empty files are supported. Multipart uploads are not implemented.
+the URL, so shared links and `?preview=1` links stay valid. Deleting an object makes its URL return 404. Neither
+can be undone: the service keeps no versions and exposes no listing API. Empty files are supported. Multipart
+uploads are not implemented.
 
 ## File display and privacy
 

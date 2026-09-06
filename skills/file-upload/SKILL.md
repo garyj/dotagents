@@ -1,6 +1,6 @@
 ---
 name: file-upload
-description: Upload a file and return a shareable public link when the user asks to share a PDF, ZIP, document, image, video, or other file, or to update a file at a link that was already shared. Works for email links, messages, PRs, and comments.
+description: Upload a file and return a shareable public link when the user asks to share a PDF, ZIP, document, image, video, or other file, or to update or delete a file at a link that was already shared. Works for email links, messages, PRs, and comments.
 ---
 
 # File upload
@@ -65,6 +65,21 @@ printf 'X-Upload-Token: %s\n' "$FILE_HOST_TOKEN" |
 A successful replacement returns HTTP 200 with the same URL, and it is safe to retry. HTTP 404 means nothing
 exists at that URL, so check the link. Do not fall back to a root upload: that creates a separate file with a
 new link.
+
+## Delete a file
+
+Delete only when the user asks for it and names the link. There is no undo and no listing to find it again.
+
+```bash
+url='https://files.example.com/uuid/report.html'
+: "${FILE_HOST_TOKEN:=$(op read 'op://AGLara/Agent Files Service - Cloudflare/password')}"
+: "${FILE_HOST_TOKEN:?FILE_HOST_TOKEN is not set and the 1Password lookup failed}"
+printf 'X-Upload-Token: %s\n' "$FILE_HOST_TOKEN" |
+	curl --silent --show-error --fail-with-body --globoff --proto '=https' \
+		--header @- --request DELETE "$url"
+```
+
+HTTP 204 means the file is gone and the link now returns 404. HTTP 404 means nothing exists at that URL.
 
 ## Share the result
 
