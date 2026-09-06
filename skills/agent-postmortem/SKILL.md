@@ -45,4 +45,5 @@ Keep the page self-contained. Check that it opens, reads well on desktop and nar
 
 The report is the only required artifact. Do not create transcript copies, evidence packs, Git repositories, or review logs by default.
 Run independent review only if the user asks for it. Otherwise deliver the report directly, with its clickable path and a short conclusion.
+After the checks pass, open the report in the default browser with `xdg-open <path>` so it is on screen when the reply lands.
 Keep reports local unless the user asks to publish them.
