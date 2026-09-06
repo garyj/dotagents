@@ -7,7 +7,7 @@ description: Upload a file and return a shareable public link when the user asks
 
 This service creates public URLs. Every response requests no indexing, but anyone with a URL can read the file.
 A private GitHub repository does not make an externally hosted file private. Do not use this service for content
-that must require authentication. Cloudflare Access and HTML site publishing are separate capabilities.
+that must require authentication. Cloudflare Access is a separate capability.
 
 Use existing authorization to share the file. Creating a document does not by itself authorize publishing it.
 Upload the selected file unchanged and return its link so the user can share it wherever they need.
@@ -52,7 +52,12 @@ Verify the returned URL with `curl --silent --show-error --fail --head "$url"`. 
 - Link videos as `[Watch recording](URL)`. GitHub does not play externally hosted videos inline, so add a GIF
   preview where one helps.
 - Link other files as `[Download filename](URL)`.
-- HTML, SVG, and other active formats download as attachments. They are not published as executable sites.
+- For a self-contained HTML preview, append `?preview=1` to the returned `.html` or `.htm` URL and share
+  `[View report](URL?preview=1)`. Verify that URL with HEAD: expect `text/html; charset=utf-8` and an inline
+  `Content-Disposition`. The original URL still downloads the file.
+- HTML previews run as ordinary webpages without a sandbox. Links, scripts, exports, printing, and forms
+  follow normal browser rules. Include print CSS in reports intended for printing; forms need a receiving service.
+- SVG and other attachment formats still download. The preview option applies only to HTML.
 
 `ffmpeg` is installed. For a clip shorter than about 30 seconds, make a GIF preview, upload it separately, and
 embed it above the full video link:
