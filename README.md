@@ -29,6 +29,7 @@ repo and a `run_after_` script runs `scripts/install`.
 | gemini   | `~/.gemini/GEMINI.md` -> `instructions.md`          | scans `~/.agents/skills` natively               |
 | pi       | `~/.pi/agent/AGENTS.md` -> `instructions.md`        | scans `~/.agents/skills` natively               |
 | opencode | `~/.config/opencode/AGENTS.md` -> `instructions.md` | no skills feature                               |
+| delta    | `~/.config/delta/AGENTS.md` -> `instructions.md`    | not managed here                                |
 | grok     | claude's `~/.claude/CLAUDE.md` via its compat scan  | claude's `~/.claude/skills` via its compat scan |
 | copilot  | per-repo only                                       | scans `~/.agents/skills` natively               |
 | cursor   | per-repo only                                       | not managed here                                |
@@ -69,5 +70,6 @@ Each of these looks like a gap but is deliberate:
   twice.
 - grok truncates each rules file at 10,000 characters and `instructions.md` sits close to that. Check `wc -c
   instructions.md` before growing it. grok warns when it clips.
+- delta reads `AGENT.md` before `AGENTS.md` in `~/.config/delta`. A non-empty `AGENT.md` there hides the link.
 - codex re-creates its hidden `.system/` of built-in skills inside `skills/` on next launch. It is dot-prefixed, so
   other agents skip it, and `.gitignore` covers it.

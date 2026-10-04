@@ -46,6 +46,7 @@ link "$root/instructions.md" "$HOME/.codex/AGENTS.md"
 link "$root/instructions.md" "$HOME/.gemini/GEMINI.md"
 link "$root/instructions.md" "$HOME/.pi/agent/AGENTS.md"
 link "$root/instructions.md" "$HOME/.config/opencode/AGENTS.md"
+link "$root/instructions.md" "$HOME/.config/delta/AGENTS.md"
 link "$root/skills" "$HOME/.claude/skills"
 link "$root/skills" "$HOME/.codex/skills"
 
