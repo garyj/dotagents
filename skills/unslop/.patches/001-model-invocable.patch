@@ -1,0 +1,14 @@
+Model-invocable: garyj's global instructions want it run on all prose, not only on /unslop.
+
+diff --git a/SKILL.md b/SKILL.md
+index 229a090..7d14d8c 100644
+--- a/SKILL.md
++++ b/SKILL.md
+@@ -1,7 +1,6 @@
+ ---
+ name: unslop
+ description: Cut AI tells from any writing. Must always apply.
+-disable-model-invocation: true
+ ---
+ 
+ # Unslop
