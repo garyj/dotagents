@@ -1,10 +1,11 @@
 {
   "source": "https://github.com/openclaw/agent-skills",
   "path": "skills/autoreview",
-  "commit": "24fe6f4bb0841f741d8929a6ee3549e691d2ba02",
+  "commit": "621fd3af706efc989154231ade7a4610a59d9460",
   "vetted": [
     "2026-08-23 delta audit vs a504fd8, verdict RUN WITH CAVEATS",
     "2026-09-05 delta audit vs 128a4ea (GPT 5.6 Sol + Fable 5.1 on PR #1), verdict RUN: exit 2 = incomplete, pass cap gone, wrapper flags intact",
-    "2026-10-04 delta audit vs ec10c1c (docs read, script by line counts, wrapper dry-run OK), verdict RUN: trufflehog gate removed upstream (#240), kimi retired, default gpt-6.1-sol, SKILL prefers codex even for codex authors, overridden by instructions.md"
+    "2026-10-04 delta audit vs ec10c1c (docs read, script by line counts, wrapper dry-run OK), verdict RUN: trufflehog gate removed upstream (#240), kimi retired, default gpt-6.1-sol, SKILL prefers codex even for codex authors, overridden by instructions.md",
+    "2026-10-10 delta audit vs 24fe6f4 (docs and script diff read, tests by line counts, wrapper dry-run OK), verdict RUN: ultrafast speed, PATH skip fix, SKILL now points at upstream install-skills, which this repo lacks and agents should not run"
   ]
 }
