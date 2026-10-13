@@ -1,2 +1,4 @@
 skills/.system/
 __pycache__/
+.ruff_cache/
+tmp/
