@@ -24,8 +24,8 @@ repo and a `run_after_` script runs `scripts/install`.
 
 | Agent    | Instructions                                        | Skills                                          |
 | -------- | --------------------------------------------------- | ----------------------------------------------- |
-| claude   | `~/.claude/CLAUDE.md` -> `instructions.md`          | `~/.claude/skills` -> `skills/`                 |
-| codex    | `~/.codex/AGENTS.md` -> `instructions.md`           | `~/.codex/skills` -> `skills/`                  |
+| claude   | `~/.claude/CLAUDE.md` -> `instructions.md`          | `~/.claude/skills/<name>` -> `skills/<name>`    |
+| codex    | `~/.codex/AGENTS.md` -> `instructions.md`           | scans `~/.agents/skills` natively               |
 | gemini   | `~/.gemini/GEMINI.md` -> `instructions.md`          | scans `~/.agents/skills` natively               |
 | pi       | `~/.pi/agent/AGENTS.md` -> `instructions.md`        | scans `~/.agents/skills` natively               |
 | opencode | `~/.config/opencode/AGENTS.md` -> `instructions.md` | no skills feature                               |
@@ -37,12 +37,12 @@ repo and a `run_after_` script runs `scripts/install`.
 ## Layout
 
 - `instructions.md` is the shared body.
-- `docs/` holds the files the body includes by path.
 - `skills/<name>/` is one skill per directory. Your own are plain directories.
 - `skills/<name>/.provenance.json` marks a copy of someone else's skill, pinned by commit, with a vetting log.
   `skills/<name>/.patches/` holds any local changes as patch files. `scripts/vendor_skill.py` owns those
   directories. Read the `vendor-skill` skill under `.claude/skills/` before adding, updating, or removing one.
-- `scripts/install` makes the symlinks in the table above.
+- `scripts/install` makes the symlinks in the table above, one per skill for Claude Code. Run it again after adding or
+  removing a skill.
 - `services/file-host/` hosts agent attachments through Cloudflare Workers and R2. See its [setup guide](services/file-host/SETUP.md).
 
 ## Vendored skills
@@ -63,13 +63,19 @@ externals in the dotfiles repo. chezmoi extracts them to `~/.local/share/agent-s
 
 Each of these looks like a gap but is deliberate:
 
-- gemini, copilot, and pi get no skills symlink. They scan `~/.agents/skills` themselves, and a symlink makes gemini
-  scan the store twice and warn on every skill.
+- gemini, copilot, pi, and codex get no skills symlink. They scan `~/.agents/skills` themselves, and a symlink makes
+  gemini scan the store twice and warn on every skill. A `~/.codex/skills` link made codex write its `.system/`
+  built-ins into this repo.
+- claude gets one link per skill, not a link to `skills/`. Claude Code syncs claude.ai skills into
+  `~/.claude/skills/synced/`; through a directory link that bucket landed in the shared store, and codex listed it as
+  nine more skills with the longest descriptions in its catalogue.
 - grok gets no wrapper and no symlink. Its Claude Code compat scan, which has no off switch, already loads
   `~/.claude/CLAUDE.md` and `~/.claude/skills`. Adding `~/.grok/AGENTS.md` or `~/.grok/skills` loads everything
   twice.
-- grok truncates each rules file at 10,000 characters and `instructions.md` sits close to that. Check `wc -c
-  instructions.md` before growing it. grok warns when it clips.
+- grok truncates each rules file at 10,000 characters. Check `wc -c instructions.md` before growing it. grok warns
+  when it clips.
 - delta reads `AGENT.md` before `AGENTS.md` in `~/.config/delta`. A non-empty `AGENT.md` there hides the link.
-- codex re-creates its hidden `.system/` of built-in skills inside `skills/` on next launch. It is dot-prefixed, so
-  other agents skip it, and `.gitignore` covers it.
+- Claude Code in a Cowork session skips a `~/.claude/CLAUDE.md` that is itself a symlink, so it runs there without
+  `instructions.md`.
+- Claude Code's Edit and Write tools refuse to write through a symlink. Edit `instructions.md` by its real path, not
+  as `~/.claude/CLAUDE.md`.

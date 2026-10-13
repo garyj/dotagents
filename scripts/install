@@ -8,7 +8,7 @@
 # Anything in the way that is not a symlink is reported and left alone.
 set -euo pipefail
 
-root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
 check=false
 bridge=""
 while [ $# -gt 0 ]; do
@@ -41,14 +41,22 @@ link() {
     fi
 }
 
+# Remove a symlink only if it points into this checkout.
+unlink_ours() {
+    local path=$1 prefix=$2
+    [ -L "$path" ] || return 0
+    case "$(readlink "$path")" in "$prefix"*) ;; *) return 0 ;; esac
+    echo "unlink: $path"
+    pending=1
+    $check || rm "$path"
+}
+
 link "$root/instructions.md" "$HOME/.claude/CLAUDE.md"
 link "$root/instructions.md" "$HOME/.codex/AGENTS.md"
 link "$root/instructions.md" "$HOME/.gemini/GEMINI.md"
 link "$root/instructions.md" "$HOME/.pi/agent/AGENTS.md"
 link "$root/instructions.md" "$HOME/.config/opencode/AGENTS.md"
 link "$root/instructions.md" "$HOME/.config/delta/AGENTS.md"
-link "$root/skills" "$HOME/.claude/skills"
-link "$root/skills" "$HOME/.codex/skills"
 
 if [ -n "$bridge" ]; then
     # Bridged skills belong to another tool, so git is told to ignore them per
@@ -68,6 +76,38 @@ if [ -n "$bridge" ]; then
         fi
     done
 fi
+
+# Claude Code syncs claude.ai skills into ~/.claude/skills/synced, and Codex
+# lists everything under skills/, so Claude gets one link per skill rather
+# than a link to the directory.
+skills_dir="$HOME/.claude/skills"
+if [ -L "$skills_dir" ] && $check; then
+    unlink_ours "$skills_dir" "$root/skills"
+    for dir in "$root"/skills/*/; do
+        echo "link: $skills_dir/$(basename "$dir") -> ${dir%/}"
+    done
+elif [ -e "$skills_dir" ] && [ ! -L "$skills_dir" ] && [ ! -d "$skills_dir" ]; then
+    echo "refusing: $skills_dir is not a directory" >&2
+    refused=1
+else
+    unlink_ours "$skills_dir" "$root/skills"
+    for dir in "$root"/skills/*/; do
+        name=$(basename "$dir")
+        [ "$name" = synced ] && continue
+        link "${dir%/}" "$skills_dir/$name"
+    done
+    if [ -d "$skills_dir" ]; then
+        for path in "$skills_dir"/*; do
+            if [ -L "$path" ] && [ ! -e "$path" ]; then
+                unlink_ours "$path" "$root/skills/"
+            fi
+        done
+    fi
+fi
+
+# Codex reads ~/.agents/skills itself. A link from ~/.codex/skills made it
+# write its .system/ built-ins into this repo.
+unlink_ours "$HOME/.codex/skills" "$root/skills"
 
 if [ "$refused" = 1 ]; then
     exit 1
