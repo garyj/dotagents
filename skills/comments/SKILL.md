@@ -13,28 +13,22 @@ Before writing one, try a better name, a smaller function, or a type. Comment
 only when none of those can carry it. In config files there is nothing to
 rename, so the bar is the sentence itself.
 
-## NEVER
+## Rules
 
-- NEVER: put more than one idea in a comment. One idea, one comment.
+- One idea per comment.
 
-- NEVER: narrate history. "now", "previously", "no longer", "used to",
-  "per PR #123". Only one approach exists at HEAD.
+- Do not narrate history. "now", "previously", "no longer", "used to",
+  "per PR #123": only one approach exists at HEAD.
 
   ```text
   # BAD:  We now intern types instead of cloning them.
   # GOOD: Interning avoids a clone on every lookup.
   ```
 
-- NEVER: address the reviewer. A comment arguing your change is correct is
+- Do not address the reviewer. A comment arguing your change is correct is
   written for whoever reads the PR, not whoever reads the file in a year.
 
-  ```text
-  # BAD:  This correctly handles the empty-list case from the bug report.
-  # GOOD: An empty list means the sync has not run yet, not that the user has
-  #       no records.
-  ```
-
-- NEVER: log a decision. Why you picked an approach, what you rejected, what you
+- Do not log a decision. Why you picked an approach, what you rejected, what you
   tried first: that is the commit message. The exception is a constraint. If
   someone undoes it and nothing complains, it was load-bearing, so write it as
   the trap rather than the deliberation.
@@ -44,19 +38,14 @@ rename, so the bar is the sentence itself.
   # GOOD: A cron job double-fires when two deploys overlap.
   ```
 
-- NEVER: say it twice. One fact, one home. Explain it at the definition;
-  everywhere else points at it or stays silent. A doc file carries the pattern,
-  the code carries the instance.
+- Say it once. Explain a fact at its definition; everywhere else points at it
+  or stays silent. A doc file carries the pattern, the code carries the
+  instance.
 
-- NEVER: hardcode a value the code owns. Values from upstream go stale the same
-  way. Name the observable, not the number.
+- Do not hardcode a value the code owns, or one taken from upstream; both go
+  stale. Name the observable, not the number.
 
-  ```text
-  # BAD:  # times out after 30s        (above  timeout=settings.TIMEOUT)
-  # GOOD: # Must stay under the gateway timeout or retries stack up.
-  ```
-
-- NEVER: open with a restatement of the next line. The waste is usually the
+- Do not open with a restatement of the next line. The waste is usually the
   first clause of an otherwise useful comment, not the whole thing.
 
   ```text
@@ -65,12 +54,12 @@ rename, so the bar is the sentence itself.
   # GOOD: The pool reuses sockets and will hand this one out again mid-write.
   ```
 
-- NEVER: add section banners where the language already groups. The exception is
-  a long flat list where a comment is the only structure the syntax allows.
+- No section banners where the language already groups. The exception is a
+  long flat list where a comment is the only structure the syntax allows.
 
-- NEVER: teach. The reader knows the language and the tools.
+- Do not teach. The reader knows the language and the tools.
 
-- NEVER: add commented-out code. If it is already there, leave it.
+- No commented-out code. If it is already there, leave it.
 
 ## Before you finish
 
