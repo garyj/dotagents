@@ -1,11 +1,12 @@
 {
   "source": "https://github.com/openclaw/agent-skills",
   "path": "skills/autoreview",
-  "commit": "621fd3af706efc989154231ade7a4610a59d9460",
+  "commit": "3f33c6d705fd3d57e36a21a42d7ccfca77643f51",
   "vetted": [
     "2026-08-23 delta audit vs a504fd8, verdict RUN WITH CAVEATS",
     "2026-09-05 delta audit vs 128a4ea (GPT 5.6 Sol + Fable 5.1 on PR #1), verdict RUN: exit 2 = incomplete, pass cap gone, wrapper flags intact",
     "2026-10-04 delta audit vs ec10c1c (docs read, script by line counts, wrapper dry-run OK), verdict RUN: trufflehog gate removed upstream (#240), kimi retired, default gpt-6.1-sol, SKILL prefers codex even for codex authors, overridden by instructions.md",
-    "2026-10-10 delta audit vs 24fe6f4 (docs and script diff read, tests by line counts, wrapper dry-run OK), verdict RUN: ultrafast speed, PATH skip fix, SKILL now points at upstream install-skills, which this repo lacks and agents should not run"
+    "2026-10-10 delta audit vs 24fe6f4 (docs and script diff read, tests by line counts, wrapper dry-run OK), verdict RUN: ultrafast speed, PATH skip fix, SKILL now points at upstream install-skills, which this repo lacks and agents should not run",
+    "2026-10-14 delta audit vs 3f33c6d (SKILL and the three new references read in full, helper diff read in full, tests by line counts, wrapper dry-run OK), verdict RUN: SKILL split into references/engines, git-and-context, images; codex default effort high -> medium and speed Ultrafast; auth failure now stops fast and may retry on a config.toml model_provider route, none configured here; ClawSweeper section is upstream-repo policy and inert here; install-skills pointer still not to be run"
   ]
 }

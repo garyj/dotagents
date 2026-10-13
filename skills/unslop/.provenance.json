@@ -1,9 +1,10 @@
 {
   "source": "https://github.com/cursor/plugins",
   "path": "pstack/skills/unslop/SKILL.md",
-  "commit": "e43c7ee26e0038c6c1fa8380dd34ce86ff94cb2a",
+  "commit": "c86f349b102feb91f1966f8a6a60882a4e601b50",
   "vetted": [
     "2026-08-23 full read + diff vs upstream, identical apart from list renumbering, prose-only style rules, verdict OK",
-    "2026-10-04 diff vs 99559f2, prose rules only, +rules 32/33 (mannered prose, over-compression), -soul section and 5 content rules; upstream disable-model-invocation reverted by patch 001, verdict OK"
+    "2026-10-04 diff vs 99559f2, prose rules only, +rules 32/33 (mannered prose, over-compression), -soul section and 5 content rules; upstream disable-model-invocation reverted by patch 001, verdict OK",
+    "2026-10-14 diff vs c86f349, prose tightening, description drops 'Must always apply', rule numbers unchanged, disable-model-invocation back upstream and patch 001 dropped on purpose, verdict OK"
   ]
 }
