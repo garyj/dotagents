@@ -1,31 +1,20 @@
 ---
 name: prime
-description: Understand the codebase and project structure. When starting a new task, use this skill to get up to speed on the project context, rules, and conventions.
+description: Get up to speed on a repository at the start of a task, from its git state, layout, stack, rules file, and README. Invoked by the user as /prime or $prime.
+disable-model-invocation: true
 ---
 
-## Project context
+# Prime
 
-- Git status: !`git status --short`
-- Recent commits: !`git log --oneline -10`
-- Directory structure: !`{ git ls-files; git ls-files --others --exclude-standard; } 2>/dev/null | cut -d/ -f1-2 | sort -u | head -60`
-- Stack hints: !`find . -maxdepth 1 \( -name "package.json" -o -name "pyproject.toml" -o -name "Cargo.toml" -o -name "go.mod" -o -name "pom.xml" -o -name "composer.json" \) -exec echo "=== {} ===" \; -exec head -20 {} \; 2>/dev/null`
+Run these from the repository root and read the output; do not paste it back.
 
-## Rules & conventions
+- `git status --short` and `git log --oneline -10`
+- `{ git ls-files; git ls-files --others --exclude-standard; } | cut -d/ -f1-2 | sort -u | head -60` for the layout
+- the first 20 lines of any `package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`, `pom.xml`, or `composer.json`
+  at the root
+- `AGENTS.md`, else `CLAUDE.md`, else `COPILOT.md`, if any
+- the first 80 lines of `README.md`, if any
 
-!`cat AGENTS.md 2>/dev/null || cat CLAUDE.md 2>/dev/null || cat COPILOT.md 2>/dev/null || echo "No rules file found"`
-
-## README (summary)
-
-!`head -80 README.md 2>/dev/null || echo "No README found"`
-
-## Your task
-
-Report a brief structured summary:
-
-- **Project type & stack** (1 line)
-- **Key directories** (3–5 bullets)
-- **Current branch / uncommitted changes**
-- **Relevant area for the task** (if a task was described)
-- Any conventions or gotchas to remember
-
-Keep the report under ~200 words. Do not read additional files unless asked.
+Then report, under 200 words: the project type and stack in one line, three to five key directories, the current
+branch and uncommitted changes, the area relevant to the task if one was given, and any conventions or traps worth
+remembering. Do not read other files unless asked.
