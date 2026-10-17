@@ -2,6 +2,13 @@
 
 Read for model/effort overrides, provider projection, optional engines.
 
+These options configure helper engines, not Copilot model access. When Codex CLI
+is unavailable, the skill permits a separate
+[Copilot subagent review](../SKILL.md#copilot-subagent-review), preferably with an
+accessible Codex model or otherwise a comparable model. Select it before launch;
+it is not `--engine copilot`, does not inherit Codex CLI flags/defaults, and
+produces no helper-validated machine status or helper isolation guarantees.
+
 - Defaults + engine-selection policy: [SKILL.md](../SKILL.md#engines).
 - Explicit `gpt-6.1-sol`: same access-only `gpt-6-sol` retry.
   Explicit `gpt-6-sol`: access-only `gpt-6-luna` retry.
@@ -92,5 +99,19 @@ Profile settings remain ignored. Force configured route before subscription atte
   argument; helper has no supported private prompt input channel.
 - Previous Kimi execution path intentionally retired; never expose bundle in
   process arguments. Existing `--kimi-bin` arguments accepted for same clear refusal.
-- Never silently select another engine. Custom agent file ≠ equivalent replacement:
-  changes input into templated system prompt.
+- Never silently select another engine. Custom agent file ≠ equivalent helper
+  replacement: changes input into templated system prompt. The documented Copilot
+  subagent route is a separate assessment with explicitly reported limitations.
+
+## OpenClaw
+
+`--engine openclaw` uses restricted `openclaw agent exec`, directly on a trusted
+host or through the bound sandbox `autoreview` tool. Omitted model and effort use
+normal OpenClaw selection; explicit helper options and environment settings retain
+their normal precedence. Direct execution inherits native configuration and
+authentication; optional `--openclaw-config` selects an external operator config.
+The helper owns review restrictions, the empty workspace, private prompt input,
+optional timeout and cleanup. Bound integrations apply current caller permissions
+before execution and return the admitted model for terminal validation.
+There is no child reviewer profile, model fallback or output-schema CLI dependency.
+See [execution and integration requirements](openclaw.md) before launch.

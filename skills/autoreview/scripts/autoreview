@@ -35,7 +35,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, BinaryIO, NamedTuple
 
 
-ENGINES = ("codex", "claude", "amp", "pi", "kimi")
+ENGINES = ("codex", "claude", "amp", "pi", "kimi", "openclaw")
 KIMI_PRIVATE_INPUT_UNSUPPORTED = (
     "kimi review is unavailable: its supported CLI prompt mode has no private input channel; "
     "refusing to place review content in process arguments"
@@ -185,6 +185,7 @@ class CapturedBundle(NamedTuple):
     spans: tuple[SourceSpan, ...] = ()
     commit: str | None = None
     images: tuple[ImageEvidence, ...] = ()
+    base: str | None = None
 
 
 class UntrackedSources(NamedTuple):
@@ -420,6 +421,7 @@ DEFAULT_THINKING_BY_ENGINE = {
     "codex": "medium",
 }
 THINKING_LEVELS_BY_ENGINE = {
+    "openclaw": {"off", "minimal", "low", "medium", "high", "xhigh", "max"},
     "amp": set(AMP_THINKING_VALUES),
     "codex": {"none", "minimal", "low", "medium", "high", "xhigh", "max"},
     "claude": {"low", "medium", "high", "xhigh", "max"},
@@ -1096,10 +1098,13 @@ def safe_engine_env(
         "claude": claude_allowed_exact,
         "codex": codex_allowed_exact,
         "pi": pi_allowed_exact,
+        "openclaw": multi_provider_allowed_exact | MULTI_PROVIDER_CREDENTIAL_ENV_KEYS | {
+            "OPENCLAW_PROFILE", "OPENCLAW_CONFIG_READONLY", "OPENCLAW_NIX_MODE",
+        },
     }.get(engine or "", set())
     allowed_prefixes = ("AUTOREVIEW_FAKE_",)
     custom_provider_env_keys: set[str] = set()
-    if engine == "pi":
+    if engine in {"pi", "openclaw"}:
         for raw_key in os.environ.get("AUTOREVIEW_PROVIDER_ENV_ALLOW", "").split(","):
             key = raw_key.strip()
             if not key:
@@ -1118,7 +1123,7 @@ def safe_engine_env(
             or key in engine_allowed_exact
             or any(key.startswith(prefix) for prefix in allowed_prefixes)
             or (
-                engine == "pi"
+                engine in {"pi", "openclaw"}
                 and (
                     key in MULTI_PROVIDER_CREDENTIAL_ENV_KEYS
                     or key in MULTI_PROVIDER_ENV_KEYS
@@ -1142,6 +1147,7 @@ def safe_engine_env(
         "claude": ("CLAUDE_CONFIG_DIR",),
         "codex": ("CODEX_HOME",),
         "pi": ("PI_CODING_AGENT_DIR",),
+        "openclaw": ("OPENCLAW_HOME", "OPENCLAW_STATE_DIR", "OPENCLAW_CONFIG_PATH", "OPENCLAW_OAUTH_DIR"),
     }
     for key in engine_config_paths.get(engine or "", ()):
         value = os.environ.get(key)
@@ -3467,7 +3473,8 @@ def branch_bundle(repo: Path, base_ref: str) -> CapturedBundle:
             ),
             branch_patch,
         ]
-    ), set(branch_paths) - tracked_sensitive_paths(branch_paths), commit=head_ref, images=images)
+    ), set(branch_paths) - tracked_sensitive_paths(branch_paths), commit=head_ref, images=images,
+        base=merge_base)
 
 
 def commit_diff_refs(repo: Path, commit_ref: str) -> tuple[str, ...]:
@@ -7148,12 +7155,36 @@ def positive_int(value: str) -> int:
     return parsed
 
 
+class SourceVersionAction(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        # Exit before argparse converts unrelated review environment defaults.
+        try:
+            digest = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+        except OSError:
+            parser.exit(1, "autoreview: cannot read source for --version\n")
+        print(f"autoreview source-sha256:{digest}")
+        parser.exit()
+
+
+class NativeSubmitAction(argparse.Action):
+    def __call__(self, parser: argparse.ArgumentParser, namespace: argparse.Namespace,
+                 values: list[str], option_string: str | None = None) -> None:
+        try:
+            submit_native_response(Path(values[0]), Path(values[1]))
+        except (OSError, ValueError, RecursionError) as exc:
+            parser.exit(1, f"native response not submitted: {exc}\n")
+        parser.exit()
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Bundle-driven AI code review.")
+    parser.add_argument("--version", action=SourceVersionAction, nargs=0, help="Print this helper's source SHA-256 and exit; not a release version.")
     parser.add_argument("--mode", choices=["auto", "local", "uncommitted", "branch", "commit"], default="auto")
     parser.add_argument("--base", help="Branch base, or explicit commit to compare with the index in local mode.")
     parser.add_argument("--commit", default="HEAD")
     parser.add_argument("--engine", choices=ENGINES, default=os.environ.get("AUTOREVIEW_ENGINE", "codex"))
+    parser.add_argument("--native-handoff", help="Fresh private directory outside the repo for bound OpenClaw execution. Requires --engine openclaw; see references/openclaw.md.")
+    parser.add_argument("--native-submit", action=NativeSubmitAction, nargs=2, metavar=("HANDOFF", "RESPONSE"), help="Commit a complete native response to an existing live exchange, remove its spool, and exit. No Git or reviewer startup.")
     parser.add_argument(
         "--model",
         action="append",
@@ -7175,8 +7206,10 @@ def parse_args() -> argparse.Namespace:
         "--engine-timeout-seconds",
         type=positive_float,
         default=os.environ.get("AUTOREVIEW_ENGINE_TIMEOUT_SECONDS"),
-        help="Optional wall-clock limit for each reviewer process. Disabled by default. Env: AUTOREVIEW_ENGINE_TIMEOUT_SECONDS.",
+        help="Optional wall-clock limit per CLI attempt or native pass. Env: AUTOREVIEW_ENGINE_TIMEOUT_SECONDS.",
     )
+    parser.add_argument("--openclaw-bin", default=os.environ.get("OPENCLAW_BIN", "openclaw"), help="Trusted host OpenClaw executable; never selected by a sandbox request.")
+    parser.add_argument("--openclaw-config", help="Optional external operator config for direct OpenClaw execution. Omit to inherit normal native configuration and authentication.")
     parser.add_argument("--codex-bin", default=os.environ.get("CODEX_BIN", "codex"))
     parser.add_argument(
         "--codex-config",
@@ -7216,6 +7249,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--json-output", help="Write validated structured review JSON.")
     parser.add_argument("--engine-stage-dir", help="Opt in to a closed local diagnostic for the first streamed Codex process; requires a fresh private local directory. Never a provider receipt or review verdict.")
     parser.add_argument("--status-output", help="Write a versioned status sidecar, including reviewer_unavailable; does not change report JSON or exit codes.")
+    parser.add_argument("--preflight-output", help="Write an advisory openclaw-preflight:v1 block for a clean committed branch; requires --preflight-repo. Never attaches to GitHub.")
+    parser.add_argument("--preflight-repo", help="Explicit target owner/repository for --preflight-output; never inferred from origin.")
     parser.add_argument(
         "--stream-engine-output",
         action="store_true",
@@ -7226,14 +7261,222 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--expect-findings", action="store_true", help="Treat findings as success; for harness acceptance tests.")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+    if args.engine == "openclaw" and not args.native_handoff and args.openclaw_config is None:
+        args.openclaw_config = os.environ.get("AUTOREVIEW_OPENCLAW_CONFIG")
     if args.engine not in ENGINES:
         raise SystemExit(f"invalid --engine/AUTOREVIEW_ENGINE: {args.engine}")
     if args.max_priority not in ("P0", "P1", "P2", "P3"):
         parser.error(f"invalid --max-priority/AUTOREVIEW_MAX_PRIORITY: {args.max_priority!r}")
+    if args.engine == "openclaw":
+        if os.name != "posix":
+            parser.error("native handoff currently requires a POSIX host with private directory permissions")
+        if args.native_handoff and args.openclaw_config:
+            parser.error("--openclaw-config belongs to direct host execution, not native handoff")
+        if args.native_handoff and args.dry_run:
+            parser.error("native handoff has no CLI startup probe; qualify the bound integration before running")
+        if args.codex_config or args.codex_speed or args.engine_stage_dir or args.stream_engine_output:
+            parser.error("other engine configuration/diagnostics cannot be applied to OpenClaw execution")
+    elif args.openclaw_config:
+        parser.error("--openclaw-config requires --engine openclaw")
+    elif args.native_handoff:
+        parser.error("--native-handoff requires --engine openclaw; it never switches an explicit engine")
+    if bool(args.preflight_output) != bool(args.preflight_repo):
+        parser.error("--preflight-output and --preflight-repo must be used together")
+    if args.preflight_output:
+        if args.mode not in ("auto", "branch") or args.dry_run:
+            parser.error("--preflight-output requires a real branch review; use --mode branch --base <ref>")
+        if (not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", args.preflight_repo)
+                or len(args.preflight_repo) > 256):
+            parser.error("--preflight-repo must be the target owner/repository")
     return args
 
 
+
+OPENCLAW_REVIEW_AGENT_OVERRIDE = {"nativeRuntimeConsent": []}
+
+
+def openclaw_review_overrides(agents: dict[str, Any] | None = None,
+                             tools: dict[str, Any] | None = None) -> dict[str, Any]:
+    # Apply review policy without selecting an owner or reconstructing inference
+    # configuration. A string primary already disables native model fallbacks.
+    agents = agents or {}
+
+    def restrictions(entry: dict[str, Any], *, defaults: bool = False) -> dict[str, Any]:
+        result: dict[str, Any] = {"skills": [], "contextInjection": "never"}
+        if isinstance(entry.get("model"), dict) or (defaults and entry.get("model") is None):
+            result["model"] = {"fallbacks": []}
+        return result
+
+    def tool_restrictions(policy: dict[str, Any]) -> dict[str, Any]:
+        # Deny-all owns enforcement; empty grants remove the native guard's
+        # expectation that an inherited explicit allowlist must yield a tool.
+        result: dict[str, Any] = {"allow": [], "alsoAllow": [],
+                                  "sandbox": {"tools": {"allow": [], "alsoAllow": []}}}
+        if providers := policy.get("byProvider"):
+            result["byProvider"] = {key: {"allow": [], "alsoAllow": []} for key in providers}
+        return result
+
+    override: dict[str, Any] = {"defaults": restrictions(agents.get("defaults", {}), defaults=True)}
+    if entries := agents.get("entries"):
+        override["entries"] = {
+            key: restrictions(value) | OPENCLAW_REVIEW_AGENT_OVERRIDE
+                 | {"tools": tool_restrictions(value.get("tools", {}))}
+            for key, value in entries.items()
+        }
+    return {"agents": override, "tools": tool_restrictions(tools or {}) | {
+        "deny": ["*"], "toolSearch": False, "codeMode": {"enabled": False},
+    }}
+
+
+def openclaw_config_file(args: argparse.Namespace, repo: Path) -> str | None:
+    if not args.openclaw_config:
+        return None
+    source = Path(args.openclaw_config).expanduser()
+    if not source.is_absolute() or not external_env_path(repo, str(source)):
+        raise SystemExit("--openclaw-config must be an absolute file outside the reviewed repository")
+    return str(source)
+
+
+def openclaw_review_config(args: argparse.Namespace, repo: Path) -> dict[str, Any]:
+    binary = resolve_command(args.openclaw_bin, repo)
+    with tempfile.TemporaryDirectory(prefix="autoreview-openclaw-config.", dir=safe_temp_root(repo)) as directory:
+        root = Path(directory)
+        env = openclaw_runtime_env(repo, binary, root)
+        if source := openclaw_config_file(args, repo):
+            env["OPENCLAW_CONFIG_PATH"] = source
+        sections: dict[str, dict[str, Any]] = {}
+        for section in ("agents", "tools"):
+            result = run_with_heartbeat([binary, "config", "get", section, "--json"], root,
+                                        label="openclaw configuration", env=env,
+                                        max_runtime_seconds=args.engine_timeout_seconds)
+            try:
+                value = json.loads(result.stdout)
+                if not isinstance(value, dict):
+                    raise ValueError("invalid configuration section")
+                if result.returncode:
+                    error = value.get("error")
+                    if (value.get("ok") is False and isinstance(error, dict)
+                            and error.get("type") == "cli_error"
+                            and isinstance(error.get("message"), str)
+                            and error["message"].startswith(f"Config path is valid but unset: {section}.")):
+                        value = {}
+                    else:
+                        raise ValueError("native configuration read failed")
+                sections[section] = value
+            except (ValueError, TypeError, AttributeError, RecursionError):
+                raise SystemExit(f"OpenClaw configuration could not be read; run openclaw config get {section} --json with the selected config") from None
+        return openclaw_review_overrides(sections["agents"], sections["tools"])
+
+
+def openclaw_final_output(output: Any, model: str | None, effective_models: list[str]) -> str:
+    try:
+        if not isinstance(output, str) or utf8_size(output) > 2_000_000:
+            raise ValueError("missing or oversized completion")
+        envelope = json.loads(output)
+        if not isinstance(envelope, dict):
+            raise ValueError("expected one terminal JSON envelope")
+        if envelope.get("ok") is not True or envelope.get("status") != "ok":
+            raise ValueError("execution did not succeed")
+        final = envelope.get("final")
+        if not isinstance(final, str) or not final.strip():
+            raise ValueError("missing final completion")
+        if model:
+            actual = (f"{envelope.get('provider')}/{envelope.get('model')}"
+                      if "/" in model else envelope.get("model"))
+            if actual != model:
+                raise ValueError("completion model differs from selected model")
+        if all(isinstance(envelope.get(key), str) and envelope[key].strip()
+               for key in ("provider", "model")):
+            actual = f"{envelope['provider']}/{envelope['model']}"
+            if actual not in effective_models:
+                effective_models.append(actual)
+            print("effective model: " + display_escape(actual, 500), flush=True)
+        return final
+    except (ValueError, RecursionError):
+        # Provider output can contain credentials or prompt content. Only fixed
+        # diagnostics leave this boundary; the report parser receives final alone.
+        raise ReviewerUnavailable("invalid OpenClaw terminal completion", reason="invalid_report") from None
+
+
+def openclaw_runtime_env(repo: Path, binary: str, root: Path) -> dict[str, str]:
+    for name in ("workspace", "tmp"):
+        (root / name).mkdir(mode=0o700)
+    # Native configuration owns arbitrary environment references. Keep those
+    # inputs on the trusted host without admitting interpreter startup hooks or
+    # replacing the helper's checked executable/configuration paths.
+    path_keys = {
+        "HOME", "USERPROFILE", "SHELL", "OPENCLAW_HOME", "OPENCLAW_STATE_DIR",
+        "OPENCLAW_CONFIG_PATH", "OPENCLAW_OAUTH_DIR", "OPENCLAW_INCLUDE_ROOTS",
+        "CODEX_HOME", "CLAUDE_CONFIG_DIR", "PI_CODING_AGENT_DIR",
+        "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_RUNTIME_DIR",
+    } | TRANSPORT_TRUST_PATH_ENV_KEYS | CODEX_TRUST_PATH_ENV_KEYS | PROVIDER_CREDENTIAL_PATH_ENV_KEYS
+    startup_keys = {
+        "ENV", "BASH_ENV", "KSH_ENV", "BASHOPTS", "SHELLOPTS", "IFS", "CDPATH",
+        "ZDOTDIR", "FPATH", "PS4", "PROMPT_COMMAND", "GCONV_PATH", "GLIBC_TUNABLES",
+        "JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS", "JAVA_OPTS",
+        "DOTNET_STARTUP_HOOKS", "DOTNET_ADDITIONAL_DEPS", "SSLKEYLOGFILE",
+        "OPENCODE_CONFIG", "OPENCODE_PERMISSION", "OPENCODE_AUTO_SHARE", "COPILOT_ALLOW_ALL",
+    }
+    startup_prefixes = ("LD_", "DYLD_", "NODE_", "BUN_", "PYTHON", "RUBY", "PERL",
+                        "GIT_", "BASH_FUNC_", "NPM_CONFIG_", "PNPM_")
+    env = {key: value for key, value in os.environ.items()
+           if key not in path_keys | startup_keys | {"PATH", "TMPDIR", "TMP", "TEMP"}
+           and not key.upper().startswith(startup_prefixes)}
+    env.update(safe_engine_env(repo, [Path(binary).parent], engine="openclaw"))
+    for key in path_keys:
+        env.pop(key, None)
+        if value := os.environ.get(key):
+            normalized = normalize_external_env_path_value(
+                repo, "SSL_CERT_DIR" if key == "OPENCLAW_INCLUDE_ROOTS" else key, value)
+            if normalized:
+                env[key] = normalized
+    env.update({
+        "TMPDIR": str(root / "tmp"),
+        "TMP": str(root / "tmp"), "TEMP": str(root / "tmp"),
+    })
+    return env
+
+
+def ensure_openclaw_supported(args: argparse.Namespace, repo: Path) -> str:
+    binary = resolve_command(args.openclaw_bin, repo)
+    openclaw_review_config(args, repo)
+    with tempfile.TemporaryDirectory(prefix="autoreview-openclaw-probe.", dir=safe_temp_root(repo)) as directory:
+        root = Path(directory)
+        result = run([binary, "agent", "exec", "--help"], root, check=False,
+                     env=openclaw_runtime_env(repo, binary, root))
+    if result.returncode or any(flag not in result.stdout for flag in ("--message-file", "--config-override", "--cwd", "--model", "--thinking", "--json")):
+        raise SystemExit("OpenClaw agent exec with private input, --config-override and JSON output is required")
+    return binary
+
+
+def run_openclaw(args: argparse.Namespace, repo: Path, prompt: str) -> str:
+    binary = resolve_command(args.openclaw_bin, repo)
+    config = args._openclaw_override
+    with tempfile.TemporaryDirectory(prefix="autoreview-openclaw.", dir=safe_temp_root(repo)) as directory:
+        root = Path(directory)
+        env = openclaw_runtime_env(repo, binary, root)
+        command = [binary, "agent", "exec", "--message-file", "-",
+                   "--config-override", json.dumps(config),
+                   "--cwd", str(root / "workspace"), "--code-mode", "direct", "--json"]
+        if source := openclaw_config_file(args, repo):
+            command += ["--config", source]
+        if args.model:
+            command += ["--model", args.model]
+        if args.thinking:
+            command += ["--thinking", args.thinking]
+        if args.engine_timeout_seconds is not None:
+            command += ["--timeout", str(math.ceil(args.engine_timeout_seconds))]
+        result = run_with_heartbeat(command, root / "workspace", input_text=prompt,
+                                    label="openclaw", env=env,
+                                    max_runtime_seconds=args.engine_timeout_seconds)
+    if result.returncode:
+        raise ReviewerUnavailable(f"OpenClaw review execution failed ({result.returncode}); no route retry", result=result)
+    return openclaw_final_output(result.stdout, args.model, args.openclaw_models)
+
+
 def run_engine(args: argparse.Namespace, repo: Path, prompt: str) -> str:
+    if args.engine == "openclaw":
+        return args._native_handoff.run(prompt) if args.native_handoff else run_openclaw(args, repo, prompt)
     if args.engine == "codex":
         return run_codex(args, repo, prompt)
     if args.engine == "claude":
@@ -7357,7 +7600,9 @@ def reviewer_args(args: argparse.Namespace) -> list[argparse.Namespace]:
     clone.model = model
     clone.thinking = thinking
     clone.fallback_model = fallback_model
-    clone.tools = False if engine in {"amp", "pi"} else args.tools
+    clone.tools = False if engine in {"amp", "pi", "openclaw"} else args.tools
+    if engine == "openclaw":
+        clone.web_search = False
     return [clone]
 
 
@@ -7377,6 +7622,7 @@ ENGINE_ISOLATION_PROBES: dict[str, Callable[[argparse.Namespace, Path], object]]
     "claude": ensure_claude_isolation_supported,
     "amp": ensure_amp_isolation_supported,
     "pi": ensure_pi_isolation_supported,
+    "openclaw": ensure_openclaw_supported,
 }
 
 
@@ -7434,6 +7680,7 @@ def resolve_engine_binary(reviewer: argparse.Namespace, repo: Path) -> tuple[boo
         "claude": getattr(reviewer, "claude_bin", None),
         "amp": getattr(reviewer, "amp_bin", None),
         "pi": getattr(reviewer, "pi_bin", None),
+        "openclaw": getattr(reviewer, "openclaw_bin", None),
     }
     bin_name = bin_by_engine.get(engine)
     if bin_name is None:
@@ -7718,14 +7965,16 @@ def run_review_passes(
 def prepare_output_paths(args: argparse.Namespace, repo: Path) -> None:
     """Validate all destinations, then freeze their original cwd/tilde meaning."""
     repo_root_path = repo.resolve()
-    distinct_referents = bool(getattr(args, "status_output", None))
+    distinct_referents = bool(getattr(args, "status_output", None) or getattr(args, "preflight_output", None))
     outputs: list[tuple[str, Path]] = []
     destinations: dict[str, str] = {}
     for option, attribute in (
         ("--json-output", "json_output"),
         ("--output", "output"),
         ("--status-output", "status_output"),
+        ("--preflight-output", "preflight_output"),
         ("--engine-stage-dir", "engine_stage_dir"),
+        ("--native-handoff", "native_handoff"),
     ):
         value = getattr(args, attribute, None)
         if not value:
@@ -7767,8 +8016,27 @@ def prepare_output_paths(args: argparse.Namespace, repo: Path) -> None:
         # Retain lexical destinations so atomic writes replace final symlinks.
         if attribute != "engine_stage_dir":
             destinations[attribute] = str(path)
+    if getattr(args, "preflight_output", None) and getattr(args, "engine_stage_dir", None):
+        stage = Path(args.engine_stage_dir).expanduser().absolute().resolve()
+        preflight = Path(destinations["preflight_output"])
+        # The diagnostic owns every entry in its private directory, including partial writes.
+        stage_key = tuple(unicodedata.normalize("NFD", part).casefold() for part in stage.parts)
+        for candidate in (preflight.parent.resolve() / preflight.name, preflight.resolve()):
+            key = tuple(unicodedata.normalize("NFD", part).casefold() for part in candidate.parts)
+            if key[:len(stage_key)] == stage_key:
+                raise SystemExit("--preflight-output must stay outside --engine-stage-dir")
     for attribute, destination in destinations.items():
         setattr(args, attribute, destination)
+    if getattr(args, "native_handoff", None):
+        handoff = Path(args.native_handoff).resolve()
+        handoff_key = tuple(unicodedata.normalize("NFD", part).casefold() for part in handoff.parts)
+        for attribute, destination in destinations.items():
+            if attribute != "native_handoff":
+                path = Path(destination)
+                for candidate in (path.parent.resolve() / path.name, path.resolve()):
+                    key = tuple(unicodedata.normalize("NFD", part).casefold() for part in candidate.parts)
+                    if key[:len(handoff_key)] == handoff_key:
+                        raise SystemExit("review outputs must stay outside --native-handoff (removed on exit)")
 
 
 def atomic_write_text(path: Path, content: str) -> None:
@@ -7784,6 +8052,193 @@ def atomic_write_text(path: Path, content: str) -> None:
         os.replace(temporary_path, path)
     finally:
         temporary_path.unlink(missing_ok=True)
+
+
+class NativeHandoff:
+    """One live invocation's transport; review state/validation stay in the caller.
+
+    The parent consumes a request, writes its full response, then commits it with
+    a small .ready file. Requests become visible only as their pass starts, so a
+    rejected response cannot launch the next pass. This is not a restart API.
+    """
+
+    MAX_RESULT_BYTES = 2_000_000
+
+    def __init__(self, args: argparse.Namespace, reviewer: argparse.Namespace,
+                 prompts: list[str] | list[ReviewPass]) -> None:
+        self.root = Path(args.native_handoff)
+        self.run_id = secrets.token_hex(16)
+        self.pass_count = len(prompts)
+        self.pass_number = 0
+        self.timeout = args.engine_timeout_seconds
+        self.model = reviewer.model
+        self.thinking = reviewer.thinking
+        self.effective_models = reviewer.openclaw_models
+        parent = self.root.parent.stat()
+        if parent.st_uid != os.getuid() or stat.S_IMODE(parent.st_mode) & 0o077:
+            raise SystemExit("native handoff requires an owned private parent directory")
+        # mkdir's exclusive creation refuses existing paths, including symlinks.
+        try:
+            self.root.mkdir(mode=0o700)
+        except OSError as exc:
+            raise SystemExit(f"cannot create fresh native handoff directory: {exc}") from None
+        self.identity = self.root.stat()
+        self.lock_fd = None
+        try:
+            if stat.S_IMODE(self.identity.st_mode) & 0o077:
+                raise SystemExit("native handoff requires a private directory")
+            self.lock_fd = os.open(self.root / ".lock", os.O_RDWR | os.O_CREAT | os.O_EXCL, 0o600)
+        except BaseException:
+            self.close()
+            raise
+
+    def close(self) -> None:
+        # Never clean up a replacement directory or follow a replaced symlink.
+        import fcntl
+        with deferred_owned_process_signals():
+            try:
+                if self.lock_fd is not None:
+                    fcntl.flock(self.lock_fd, fcntl.LOCK_EX)
+                current = self.root.lstat()
+                if (current.st_dev, current.st_ino) == (self.identity.st_dev, self.identity.st_ino):
+                    shutil.rmtree(self.root)
+            except FileNotFoundError:
+                pass
+            finally:
+                if self.lock_fd is not None:
+                    os.close(self.lock_fd)
+                    self.lock_fd = None
+
+    @staticmethod
+    def read_file(path: Path | str, limit: int, *, dir_fd: int | None = None) -> bytes:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dir_fd)
+        with os.fdopen(descriptor, "rb") as handle:
+            info = os.fstat(handle.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_uid != os.getuid():
+                raise ValueError("native result must be an owned regular file")
+            data = handle.read(limit + 1)
+            if len(data) > limit:
+                raise ValueError("native result exceeds the transport limit; no partial report accepted")
+            return data
+
+    def run(self, prompt: str) -> str:
+        self.pass_number += 1
+        number = self.pass_number
+        digest = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+        request = {
+            "protocol": "autoreview-exec-v1", "run_id": self.run_id,
+            "admitted_model": True,
+            "pass": number, "passes": self.pass_count,
+            "prompt": prompt, "prompt_bytes": utf8_size(prompt), "prompt_sha256": digest,
+            "model": self.model, "thinking": self.thinking,
+            "engine_timeout_seconds": self.timeout,
+            "max_result_bytes": self.MAX_RESULT_BYTES,
+        }
+        atomic_write_text(self.root / f"{number}.request.json", json.dumps(request))
+        print(f"native pass ready: {number}/{self.pass_count}", flush=True)
+        deadline = time.monotonic() + self.timeout if self.timeout is not None else None
+        ready_path = self.root / f"{number}.ready"
+        try:
+            while not ready_path.exists():
+                if deadline is not None and time.monotonic() >= deadline:
+                    failure = ReviewerUnavailable("OpenClaw execution result timed out", reason="timeout")
+                    failure.timed_out = True
+                    raise failure
+                time.sleep(0.1 if deadline is None else min(0.1, max(0, deadline - time.monotonic())))
+            ready = json.loads(self.read_file(ready_path, 1024))
+            raw = self.read_file(self.root / f"{number}.result.json", self.MAX_RESULT_BYTES)
+            if (not isinstance(ready, dict) or set(ready) != {"run_id", "pass", "bytes"}
+                    or ready["run_id"] != self.run_id or type(ready["pass"]) is not int
+                    or ready["pass"] != number or type(ready["bytes"]) is not int
+                    or ready["bytes"] != len(raw)):
+                raise ValueError("native result commit does not match the complete response")
+            result = json.loads(raw)
+            if (not isinstance(result, dict)
+                    or set(result) - {"model"} != {"run_id", "pass", "prompt_sha256", "status", "output"}
+                    or result["run_id"] != self.run_id or type(result["pass"]) is not int
+                    or result["pass"] != number or result["prompt_sha256"] != digest):
+                raise ValueError("native result does not match the prepared pass")
+            if result["status"] != "done":
+                raise ReviewerUnavailable("OpenClaw execution failed; no route retry", reason="execution_failed")
+            model = result.get("model", self.model)
+            if "model" in result and (not isinstance(model, str) or "/" not in model
+                                      or not all(part.strip() for part in model.split("/", 1))):
+                raise ValueError("native result has no admitted model")
+            return openclaw_final_output(result["output"], model, self.effective_models)
+        except (OSError, ValueError, RecursionError) as exc:
+            raise ReviewerUnavailable(f"invalid native result: {exc}", reason="invalid_report") from None
+
+
+def submit_native_response(root: Path, source: Path) -> None:
+    """Commit through an existing directory fd; a late collector cannot recreate it.
+
+    The parent writes its spool beside the exchange, under the same private
+    task directory. Submission removes only that named, identity-checked spool,
+    even when the exchange has already retired. It never publishes a verdict.
+    """
+    if os.name != "posix":
+        raise ValueError("native submission requires POSIX directory custody")
+    import fcntl
+    root, source = root.absolute(), source.absolute()
+    parent = root.parent.stat()
+    if (parent.st_uid != os.getuid() or stat.S_IMODE(parent.st_mode) & 0o077
+            or source.parent.resolve() != root.parent.resolve()
+            or not re.fullmatch(re.escape(root.name) + r"\.[a-f0-9]{32}\.[1-9][0-9]*\.response\.json", source.name)):
+        raise ValueError("response spool must use the exchange's owned private parent and request identity")
+    source_identity = source.lstat()
+    try:
+        raw = NativeHandoff.read_file(source, NativeHandoff.MAX_RESULT_BYTES)
+        response = json.loads(raw)
+        if (not isinstance(response, dict) or type(response.get("pass")) is not int
+                or response["pass"] < 1 or not isinstance(response.get("run_id"), str)
+                or source.name != f"{root.name}.{response['run_id']}.{response['pass']}.response.json"):
+            raise ValueError("response spool does not match its request identity")
+        descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        lock = None
+        try:
+            lock = os.open(".lock", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=descriptor)
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            info = os.fstat(descriptor)
+            if (info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) & 0o077
+                    or os.fstat(lock).st_nlink != 1):
+                raise ValueError("native exchange is not private and owned")
+            number = response["pass"]
+            request = json.loads(NativeHandoff.read_file(
+                f"{number}.request.json", 4_000_000, dir_fd=descriptor))
+            if any(response.get(key) != request.get(key) for key in ("run_id", "pass", "prompt_sha256")):
+                raise ValueError("native response does not match the live prepared pass")
+            # A failed partial submission is never retried or replaced.
+            claim = os.open(f"{number}.submitted", os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                            0o600, dir_fd=descriptor)
+            os.close(claim)
+            for name, data in (
+                (f"{number}.result.json", raw),
+                (f"{number}.ready", json.dumps({"run_id": response["run_id"],
+                    "pass": number, "bytes": len(raw)}).encode("utf-8")),
+            ):
+                temporary = ".submit-" + secrets.token_hex(16)
+                try:
+                    file_descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                                              0o600, dir_fd=descriptor)
+                    with os.fdopen(file_descriptor, "wb") as handle:
+                        handle.write(data)
+                    os.replace(temporary, name, src_dir_fd=descriptor, dst_dir_fd=descriptor)
+                finally:
+                    try:
+                        os.unlink(temporary, dir_fd=descriptor)
+                    except FileNotFoundError:
+                        pass
+        finally:
+            if lock is not None:
+                os.close(lock)
+            os.close(descriptor)
+    finally:
+        try:
+            current = source.lstat()
+            if (current.st_dev, current.st_ino) == (source_identity.st_dev, source_identity.st_ino):
+                source.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def write_review_status(args: argparse.Namespace, status: str, exit_code: int,
@@ -7802,7 +8257,38 @@ def write_review_status(args: argparse.Namespace, status: str, exit_code: int,
     }
     if usage := review_usage_summary(args):
         envelope["usage"] = usage
+    if args.engine == "openclaw" and (models := getattr(args, "openclaw_models", None)):
+        envelope["effective_models"] = models
     atomic_write_text(Path(args.status_output), json.dumps(envelope, indent=2) + "\n")
+
+
+def preflight_block(args: argparse.Namespace, captured: CapturedBundle,
+                    report: dict[str, Any], version: str) -> str:
+    """Project only native outcome facts, never model prose or review authority."""
+    threshold = f"Threshold {args.max_priority}; "
+    if args.max_priority != "P3":
+        threshold += "lower priorities not assessed; "
+    summary = (
+        threshold + f"status {report['review_status']}; "
+        f"accepted {len(report['findings'])}; "
+        f"priority-filtered {len(report.get('priority_filtered_findings', []))}; "
+        f"scope/attribution-rejected {len(report.get('scope_rejected_findings', [])) + len(report.get('attribution_rejected_findings', []))}; "
+        f"missing-required {len(report.get('missing_required_findings', []))}. "
+        "Self-reported; see native report."
+    )
+    payload = {
+        "v": 1, "repo": args.preflight_repo, "base": captured.base, "head": captured.commit,
+        "tool": {"name": "autoreview", "version": version},
+        "completion": "partial" if report["review_status"] == "incomplete" else "complete",
+        "summary": summary,
+    }
+    encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    for character, escaped in (("<", "\\u003c"), (">", "\\u003e"), ("&", "\\u0026")):
+        encoded = encoded.replace(character, escaped)
+    block = f"<!-- openclaw-preflight:v1\n{encoded}\n-->"
+    if len(summary.encode("utf-8")) > 512 or len(block.encode("utf-8")) > 4096:
+        raise ValueError("preflight summary exceeds its byte limit")
+    return block
 
 
 def main() -> int:
@@ -7829,6 +8315,8 @@ def main_impl() -> int:
     try:
         return main_with_args(args)
     finally:
+        if handoff := getattr(args, "_native_handoff", None):
+            handoff.close()
         if stage is not None:
             try:
                 persist_engine_stage(args.engine_stage_dir, stage)
@@ -7844,13 +8332,19 @@ def main_with_args(args: argparse.Namespace) -> int:
     with PreparationProgress("target selection"):
         repo = repo_root()
         prepare_output_paths(args, repo)
-        if getattr(args, "status_output", None):
+        if not args.dry_run and getattr(args, "status_output", None):
             Path(args.status_output).unlink(missing_ok=True)
+        if getattr(args, "preflight_output", None):
+            Path(args.preflight_output).unlink(missing_ok=True)
         target, target_ref = choose_target(repo, args.mode, args.base)
+        if getattr(args, "preflight_output", None) and (target != "branch" or is_dirty(repo)):
+            raise SystemExit("preflight export requires a clean committed branch; commit changes and use --mode branch --base <ref>")
         branch = current_branch(repo)
     print(f"autoreview target: {target}", flush=True)
     print(f"branch: {branch}", flush=True)
     reviewer = reviewers[0]
+    if reviewer.engine == "openclaw":
+        args.openclaw_models = reviewer.openclaw_models = []
     print(f"engine: {reviewer.engine}", flush=True)
     if reviewer.model:
         print(f"model: {reviewer.model}", flush=True)
@@ -7866,7 +8360,7 @@ def main_with_args(args: argparse.Namespace) -> int:
         if speed:
             print(f"codex_speed: {speed}", flush=True)
     print(f"tools: {'on' if reviewer.tools else 'off'}", flush=True)
-    print(f"web_search: {'on' if args.web_search else 'off'}", flush=True)
+    print(f"web_search: {'on' if reviewer.web_search else 'off'}", flush=True)
     display_ref = args.commit if target == "commit" else target_ref
     if display_ref:
         print(f"ref: {display_ref}", flush=True)
@@ -7877,8 +8371,17 @@ def main_with_args(args: argparse.Namespace) -> int:
         evidence = capture_evidence_inputs(args, repo)
     with PreparationProgress("initial source snapshot") as progress:
         review_source_snapshot = source_tree_snapshot(repo, progress)
+    if getattr(args, "preflight_output", None) and is_dirty(repo):
+        raise SystemExit("source became dirty before preflight capture; commit changes and rerun")
     with PreparationProgress("bundle/evidence preparation"):
         captured = build_bundle(repo, target, target_ref, args.commit)
+        if getattr(args, "preflight_output", None):
+            if (not captured.paths or captured.commit != review_source_snapshot[0]
+                    or not captured.base or not captured.commit
+                    or not re.fullmatch(r"[0-9a-f]{40}", captured.base)
+                    or not re.fullmatch(r"[0-9a-f]{40}", captured.commit)):
+                raise SystemExit("preflight export requires a nonempty SHA-1 branch range")
+            preflight_version = "source-" + hashlib.sha256(Path(__file__).read_bytes()).hexdigest()[:12]
         require_image_engine(reviewer.engine, captured.images)
         if target == "commit":
             target_ref = args.commit
@@ -7901,6 +8404,13 @@ def main_with_args(args: argparse.Namespace) -> int:
                 "rerun autoreview against the updated tree"
             )
     try:
+        if reviewer.engine == "openclaw" and args.native_handoff:
+            with deferred_owned_process_signals():
+                args._native_handoff = NativeHandoff(args, reviewer, prompts)
+                reviewer._native_handoff = args._native_handoff
+        elif reviewer.engine == "openclaw":
+            with PreparationProgress("reviewer configuration"):
+                reviewer._openclaw_override = openclaw_review_config(reviewer, repo)
         pass_results = run_review_passes(
             args,
             reviewers,
@@ -7973,6 +8483,15 @@ def main_with_args(args: argparse.Namespace) -> int:
     else:
         exit_code = 1 if has_findings or overall_incorrect else 0
     write_review_status(args, report["review_status"], exit_code)
+    if getattr(args, "preflight_output", None):
+        try:
+            # Export has its own late check: report writes must not restamp a changed source.
+            if source_tree_snapshot(repo) != review_source_snapshot or is_dirty(repo):
+                raise ValueError("source changed before preflight export; rerun on the clean branch")
+            verify_evidence(repo, evidence.files)
+            atomic_write_text(Path(args.preflight_output), preflight_block(args, captured, report, preflight_version))
+        except (OSError, ValueError, SystemExit) as exc:
+            print(f"preflight export failed: {display_escape(exc, 500)}; native review outcome preserved", file=sys.stderr)
     return exit_code
 
 
