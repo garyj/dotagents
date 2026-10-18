@@ -16,13 +16,17 @@ I run agents in **auto-approve / yolo mode** (Claude Code's `--dangerously-skip-
 - Bad: asked why the CLI failed, the agent answered "source the .env", then added direnv, swapped the HTTP library, and reformatted the script.
 - Good: "The CLI fails because .env is not loaded. Run `source .env` first."
 
+**Reach for what already exists** before writing code: a linter rule, a hook, a platform default, a config setting. If the code an issue points at works around something the platform now does itself, the fix is usually to delete it. When a fix could add a paid service, a dependency, a repo, or a new mechanism, lead with the free, no-new-code option in plain words. Spikes get a time box. Anything you find on the way gets its own issue or PR, never a commit in this one.
+
 **Questions are read-only.** If I ask how something works, why it fails, or how to do something, answer. Do not edit files, install anything, or fix things while you are in there. Wait for me to ask for the change.
 
 **Task-local restrictions beat standing authorization.** "Do not push yet", "only change X", and "leave Y alone" stay in force until I withdraw them, even where this file grants the action in general.
 
 Pause and confirm before:
 
-- Anything that could cause data loss: deleting files, branches, or shared resources
+- Anything that could cause data loss: deleting files, branches, or shared resources. Removing a merged PR's worktree, branch, and test stack is routine: do it with the `cleanup` skill without asking, and say what you removed. Never remove a worktree another session is working in.
+- Merging a PR, unless I asked for that PR's merge in my prompt or in a PR comment from my own account
+- Anything outward-facing on a repo, org, or service I don't own: issues, PRs, comments, forks
 - Rewriting working code from scratch. The bug is almost always smaller than the rewrite.
 - Force-pushing shared branches or rewriting published history. Force-with-lease on my own solo branches is fine.
 - Pushing directly to master/main
@@ -30,6 +34,8 @@ Pause and confirm before:
 - Production operations: deploys, secrets, env changes
 
 Within the authorized scope, make routine decisions and complete necessary follow-through without asking me to continue.
+
+When the harness or a system reminder overrides a rule in this file, follow it and say in one line which rule you dropped.
 
 # Implementation
 
@@ -44,7 +50,7 @@ Within the authorized scope, make routine decisions and complete necessary follo
 
 # Verification Before Done
 
-Test meaningful behavior that can break. Avoid tests that merely mirror the implementation or preserve coverage for deleted features.
+Test meaningful behavior that can break. Avoid tests that merely mirror the implementation or preserve coverage for deleted features. Prefer one test that drives the whole workflow over several small unit tests.
 
 Before calling a behavior change complete, check every existing entry point and interface it affects. Include the reverse action where the feature requires one, such as mute/unmute. Stay within the requested scope.
 
@@ -61,9 +67,13 @@ The `file-pr` skill runs the cross-model review (`autoreview`) before a push; th
 # Git
 
 - **Branch and worktree naming.** For GitHub or Jira issues: `<type>/<KEY>-<slug>` (feat, fix, doc, chore), key UPPERCASE: `feat/GH-123-add-login`, `fix/PROJ-456-broken-link`.
-- **Commits.** Mirror the repo's style from `git log`, then follow the `commit` skill (`~/.agents/skills/commit/SKILL.md`).
+- **Commits.** Mirror the repo's style from `git log`, then follow the `commit` skill (`~/.agents/skills/commit/SKILL.md`). My git template appends the branch's issue key, such as `GH-123`, to each commit subject. Don't add it yourself, and leave room for it.
 - **Pre-commit failures.** Fix the tool that failed. Never `--no-verify`.
-- **Pushing and PRs: standing authorization.** Push feature branches on your own. File PRs with the `file-pr` skill and watch them through review and CI with `babysit-pr`. Merge back via PR, using the repo's usual merge type.
+- **Pushing and PRs: standing authorization.** Push feature branches on your own. File PRs with the `file-pr` skill and watch them through review and CI with `babysit-pr`. Once I've said merge, merge via PR with the repo's usual merge type.
+
+# Memory
+
+Write a fact about a repository into that repository, in its AGENTS.md or docs, in the PR that taught it. Other agents, other machines, and other developers read only the repo. Keep agent memory for facts about me and my machines.
 
 # Writing and Tools
 
