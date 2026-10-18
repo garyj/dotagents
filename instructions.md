@@ -25,7 +25,7 @@ I run agents in **auto-approve / yolo mode** (Claude Code's `--dangerously-skip-
 Pause and confirm before:
 
 - Anything that could cause data loss: deleting files, branches, or shared resources. Removing a merged PR's worktree, branch, and test stack is routine: do it with the `cleanup` skill without asking, and say what you removed. Never remove a worktree another session is working in.
-- Merging a PR, unless my prompt grants it for that PR
+- Merging a PR, unless I asked for that PR's merge in my prompt or in a PR comment from my own account
 - Anything outward-facing on a repo, org, or service I don't own: issues, PRs, comments, forks
 - Rewriting working code from scratch. The bug is almost always smaller than the rewrite.
 - Force-pushing shared branches or rewriting published history. Force-with-lease on my own solo branches is fine.
