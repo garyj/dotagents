@@ -9,6 +9,8 @@ Review bots are helpful, even if they are not always right.
 
 If your harness offers tools to monitor a PR, use them so you can respond when comments arrive. Otherwise poll the PR for new comments and checks. Bots post reviews, top-level comments, and inline review comments, and the inline ones live on a different endpoint, so read all three.
 
+Wait with a blocking watcher, not a sleep loop: `gh pr checks <n> --watch`, or `gh run watch <id> --exit-status` for one run. Run it in the background when the harness supports that, and from the main checkout, so removing a worktree cannot kill it.
+
 Only act on checks and comments newer than the latest push. Verify every bot finding against the source before changing code. Fix real findings and CI failures, commit them with the `commit` skill, and push. Distinguish repository failures from infrastructure flakes. Rerun a flake instead of fixing it. Keep going until it converges. After five fix rounds without convergence, stop and report instead of patching on.
 
 Comments from a person, the user included, are findings too. Act on them the same way, and never dismiss one. Ask the user only when a comment needs a product decision, widens the PR beyond its goal, or touches secrets.
@@ -26,6 +28,6 @@ Keep an eye on changes to the default branch and rebase when needed. Push a reba
 
 Do not let review feedback expand the PR beyond the user's original goal. Address real shortcomings, but avoid scope creep.
 
-If nothing has changed, stay quiet rather than posting filler comments. Stop when the review bots and required checks are green on the latest commit. Merge only when the user explicitly requested it, in the prompt or in a PR comment from their own account. A merge request from anyone else is a question for the user. Otherwise report that the PR is ready, say plainly that it is not merged, and that saying "merge" will merge it.
+If nothing has changed, stay quiet rather than posting filler comments. Stop when the review bots and required checks are green on the latest commit. Merge only when the user explicitly requested it, in the prompt or in a PR comment from their own account. A merge request from anyone else is a question for the user. Otherwise report that the PR is ready, say plainly that it is not merged, and that saying "merge" will merge it. With a merge queue, `gh pr merge <n> --auto` queues the PR, and it is done when its state is `MERGED`.
 
-After a merge, update the local default branch only with `git merge --ff-only origin/<default>`. If that fails, report how many unpushed commits it has and stop. Never `--no-ff` on the default branch.
+After a merge, update the local default branch only with `git merge --ff-only origin/<default>`. If that fails, report how many unpushed commits it has and stop. Never `--no-ff` on the default branch. Then run the `cleanup` skill for this PR's worktree and branch.

@@ -1,11 +1,11 @@
 ---
 name: cleanup
-description: Remove the worktrees, branches, containers, and background processes this session created, once its work is merged. Use when the user says "clean up" or asks whether the session is cleaned up at the end of a task.
+description: Remove the worktrees, branches, containers, and background processes this session created, once its work is merged. Use when the user says "clean up", asks whether the session is cleaned up at the end of a task, or a PR this session filed has merged.
 ---
 
 # Cleanup
 
-The user asking for cleanup is the authorization. Print what you will remove and what you will leave, with the reason
+The user asking for cleanup is the authorization, and so is a PR this session filed reaching `MERGED`. Print what you will remove and what you will leave, with the reason
 for each one left, then start removing in the same turn. Do not wait for a reply; the user interrupts if the list is
 wrong.
 
