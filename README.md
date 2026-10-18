@@ -43,9 +43,6 @@ repo and a `run_after_` script runs `scripts/install`.
   directories. Read the `vendor-skill` skill under `.claude/skills/` before adding, updating, or removing one.
 - `scripts/install` makes the symlinks in the table above, one per skill for Claude Code. Run it again after adding or
   removing a skill.
-- `scripts/git-guard` is the PreToolUse hook `~/.claude/settings.json` runs on every Bash call. It blocks
-  `--no-verify`, a force push that is not `--force-with-lease`, and a push to master or main; `GIT_GUARD=allow` in
-  front of a command is the approved override.
 - `services/file-host/` hosts agent attachments through Cloudflare Workers and R2. See its [setup guide](services/file-host/SETUP.md).
 
 ## Vendored skills
