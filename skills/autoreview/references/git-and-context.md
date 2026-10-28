@@ -6,6 +6,10 @@
   scope; presence/edits do not make parent dirty. Ordinary adjacent files stay included.
 - Revalidate worktree boundaries without changing Git ignore rules.
 
+- Local status columns come from the captured base → index and index → working-tree
+  diff queues, not a separate HEAD-relative status. Paths are JSON strings; renames
+  appear as add/delete transitions, matching the no-renames patches.
+
 - Git display settings cannot suppress context markers or add patch colors;
   repository configuration unchanged. Source paths/text retain literal whitespace.
 - Empty present source: line 1, column 1, empty excerpt. Empty physical lines:
@@ -39,6 +43,22 @@
   Git routing, `GH_REPO` redirection, checkout-owned executables.
 - Differently named `AUTOREVIEW_GIT` override child cannot also select as `git`:
   explicit `--base` required. Rejected GitHub configuration paths: same requirement.
+
+## Submodule pins
+
+Gitlink changes (mode `160000`) include full old/new commit IDs and the path's
+URLs from the corresponding `.gitmodules` states. Branch/commit mode reads frozen
+blobs; local mode reads base, index and working-tree mappings independently.
+Local Git config, URL rewrites, includes and submodule update commands are not used.
+Missing mappings are explicit `null` values; ambiguous mappings fail preparation.
+
+This reviews the superproject pin and integration, not the upstream code. No
+network fetch or submodule checkout runs. To review upstream changes, explicitly
+fetch the range in a separate checkout and supply relevant evidence with
+`--dataset`; that context does not expand finding scope beyond the superproject.
+Uncommitted submodule contents and mixed staged/unstaged gitlink changes remain
+unsupported; use committed branch/commit mode for pin reviews. Other source,
+authentication, sandbox and mutation checks remain enabled.
 
 ## Committed source context
 

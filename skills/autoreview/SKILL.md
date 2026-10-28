@@ -56,6 +56,10 @@ Choose the target explicitly when ambiguous:
 | Committed branch/PR | `--mode branch --base <ref>` | Merge-base → HEAD; excludes dirty work |
 | One commit | `--mode commit --commit <ref>` | Raw parent → commit; root compares against empty tree |
 
+Gitlink bumps include full old/new IDs and selected `.gitmodules` URLs as pin
+metadata; upstream contents are not automatically fetched or reviewed. See
+[submodule pin scope](references/git-and-context.md#submodule-pins).
+
 `auto` selects local when dirty, otherwise branch using the PR base or `origin/main`.
 Clean main has no implicit target. `uncommitted` aliases local. The helper never fetches.
 For a complete PR candidate including dirty rewrites, pin the merge base:
@@ -65,6 +69,12 @@ pr_base=$(gh pr view --json baseRefName --jq .baseRefName)
 merge_base=$(git merge-base HEAD "origin/$pr_base")
 python3 "$AUTOREVIEW" --mode local --base "$merge_base"
 ```
+
+An explicit local base with zero selected changes still runs the reviewer, like
+an empty branch scope. A complete validated report may be `scoped-clean` for that
+empty delta; it does not certify the whole repository. Capture failures, omitted
+inputs and incomplete or failed reviews retain their existing handling. Local
+mode without a base still refuses an empty candidate.
 
 Staged and unstaged states are reviewed; index defects remain actionable despite
 working-tree fixes (`INDEX-only`). Same-repo nested linked checkouts are excluded;
