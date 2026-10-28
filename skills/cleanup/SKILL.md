@@ -1,56 +1,47 @@
 ---
 name: cleanup
-description: Remove the worktrees, branches, containers, and background processes this session created, once its work is merged. Use when the user says "clean up", asks whether the session is cleaned up at the end of a task, or a PR this session filed has merged.
+description: Use when the user says `clean up`, or a PR this session filed reaches `MERGED`, to remove the worktrees, branches, containers, and background processes this session created once its work is merged.
 ---
 
 # Cleanup
 
-The user asking for cleanup is the authorization, and so is a PR this session filed reaching `MERGED`. Print what you will remove and what you will leave, with the reason
-for each one left, then start removing in the same turn. Do not wait for a reply; the user interrupts if the list is
-wrong.
+- The user asking for cleanup is the authorization, and so is a PR this session filed reaching `MERGED`.
+- Print what you will remove and what you will leave, with the reason for each one left, then start removing in the
+  same turn.
+- Do not wait for a reply; the user interrupts if the list is wrong.
 
 ## What belongs to this session
 
 Only what this session created or worked in, judged from the conversation: worktrees and branches it made, test stacks
 and containers it started, and background processes it launched. Anything you cannot tie to this session stays, even
-when it looks abandoned. After a context compaction, if the summary does not name a worktree, leave it.
-
-## When a worktree is safe to remove
-
-Run `git fetch --prune` first. A worktree and its branch are safe to remove when both hold:
-
-- `git -C <path> status --porcelain` prints nothing.
-- The branch's work is on the default branch: `gh pr view <branch> --json state` says `MERGED`, or
-  `git branch --merged origin/<default>` lists it.
-
-Uncommitted changes, an open PR, or commits that never reached a merged PR block that one worktree. Skip it, carry on
-with the rest, and say why in the report. Never use a force flag to get past a block.
+when it looks abandoned. After a context compaction, if the summary does not name a worktree, leave it. Do not use
+`wt step prune`; it removes every merged worktree, not only this session's.
 
 ## Remove
 
-Run from the main checkout. If your shell sits inside a worktree you are removing, move out of it first.
+Use worktrunk for the checks and the removal. Read the `worktrunk` skill's `reference/list.md` (JSON output) and
+`reference/remove.md` for the current commands and fields.
 
-With worktrunk (`wt` on PATH), remove all safe worktrees in one call:
+Run from the main checkout. Run `git fetch --prune` first so worktrunk compares against the current default branch.
 
-```bash
-wt remove --foreground --reap <branch>...
-```
+A worktree is safe to remove when all of these hold:
 
-It runs the project's pre-remove hooks, which tear down test stacks, and kills processes running inside each worktree.
-It deletes a branch only when the branch is merged. If it keeps a branch whose PR `gh` reports as `MERGED`, the PR was
-squash-merged and `git branch -D <branch>` is safe.
+- Its working tree is clean.
+- Its work is on the default branch.
+- Its PR is not open. If worktrunk cannot tell whether a PR is open, treat it as open.
 
-Without worktrunk, stop the session's containers and processes for each worktree, then run
-`git worktree remove <path>` and `git branch -d <branch>`. The same squash-merge rule allows `-D`.
+Skip any other worktree, carry on with the rest, and say why in the report. Never use a force flag (`-f`, `-D`) to get
+past a block. Remove the safe worktrees in the foreground, and reap their processes so the project's pre-remove
+hooks and process cleanup finish before you report. If worktrunk keeps a branch as unmerged but `gh pr view <branch>
+--json state` reports `MERGED`, the PR was squash-merged and `git branch -D <branch>` is safe.
 
-Then finish the rest:
+Then:
 
 - Delete the remote branch with `git push origin --delete <branch>` if its PR merged and the branch still exists.
 - Stop any container or process the session started outside a worktree.
-- Run `git worktree prune`.
 - If the main checkout is clean, switch it to the default branch and run `git pull --ff-only`.
 
 ## Report
 
-Show `git worktree list` output, then list what you removed, what you left and why, and the main checkout's branch and
-whether it is in sync with origin.
+Show `wt list` output, then list what you removed, what you left and why, and the main checkout's branch and whether it
+is in sync with origin.
