@@ -5,6 +5,8 @@ description: File a concise pull request. Use when the user asks to file, open, 
 
 # File PR
 
+If `gh repo view <repo> --json viewerPermission` for the PR's target repo is `READ` or `TRIAGE`, the repo belongs to someone else: show the user the title and description and ask before you push or file.
+
 Before filing, check whether a PR for this branch already exists. If one does, push and leave its title and description alone. The user may have edited them.
 
 If the working tree has uncommitted changes, stop and say so. Do not stash them and do not commit them. Point the user at the `commit` skill.
