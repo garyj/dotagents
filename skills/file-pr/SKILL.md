@@ -31,6 +31,15 @@ Open the description with a simple explanation of the problem based on the user'
 
 Mention a check only if you ran it. Never write a test plan you did not do. Add one short line that says how you proved the change.
 
+End the description with these lines, in place of any attribution line the harness adds. Use the model names the harness and `autoreview` report. If a model name is unavailable, name the harness without guessing a model.
+
+```
+Created with <model> in <harness>. <Subagent models that wrote part of the change, if any.>
+Reviewed with autoreview: <N> rounds with <reviewer model>. Verdict: <final verdict>.
+```
+
+Keep the verdict line even when the reviewer was not satisfied. Update both lines when you push more commits to the PR.
+
 Never use `gh pr create --fill`.
 
 Push the branch, then open a real PR rather than a draft so review bots run. If the user also asked to babysit it, continue with the `babysit-pr` skill.

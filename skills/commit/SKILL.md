@@ -22,6 +22,10 @@ Otherwise, only include issue references if the repo's history already uses them
 
 Place the reference at the **end of the subject line** (not the body), inside parentheses if it reads more naturally that way. Keep the subject under 72 chars.
 
+## Model trailer
+
+Each commit names the model that wrote it. Claude Code adds `Co-Authored-By: <model> <noreply@anthropic.com>` itself. In any other harness, end the message with `Co-Authored-By: <model> <noreply address of the model's vendor>`, using the model name the harness reports. If it reports none, name the harness. Never add a second trailer for the same model.
+
 ## Splitting commits
 
 Split when the diff mixes:
