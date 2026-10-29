@@ -29,7 +29,7 @@ GOOD
 
 Open the description with a simple explanation of the problem based on the user's original prompt, then briefly explain the solution. Do not lead with an inventory of the files, functions, and entry points touched.
 
-Mention a check only if you ran it. Never write a test plan you did not do.
+Mention a check only if you ran it. Never write a test plan you did not do. Add one short line that says how you proved the change.
 
 Never use `gh pr create --fill`.
 
