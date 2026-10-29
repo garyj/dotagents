@@ -14,9 +14,11 @@ Upload the selected file unchanged and return its link so the user can share it 
 
 ## Upload a file
 
-Read `FILE_HOST_URL` and `FILE_HOST_TOKEN` from the environment. When either is unset, read it from 1Password
-with `op read`. The URL is the HTTPS origin of the upload service, without a file path. If a value is still
-missing after the lookup, report which one. Do not guess a hostname, print the token, or commit these values.
+Read `FILE_HOST_URL` and `FILE_HOST_TOKEN` from the environment. The shell exports both on machines set up
+with chezmoi, so uploads need no 1Password unlock and work while nobody is at the keyboard. When either is
+unset, read it from 1Password with `op read`, which can wait on a desktop unlock prompt. The URL is the HTTPS
+origin of the upload service, without a file path. If a value is still missing after the lookup, report which
+one. Do not guess a hostname, print the token, or commit these values.
 
 | Variable | 1Password reference |
 | --- | --- |
