@@ -1,9 +1,7 @@
 ---
 name: commit
-description: Create git commits that mirror the repo's existing convention. Falls back to Conventional Commits (with `infra` and `dev` types) when no pattern is detectable. Use when committing code, staging files, or creating atomic commits.
+description: Use when the user explicitly says `commit` OR you just need to do a git commit
 ---
-
-Create a git commit (or several) for the current changes. Mirror the repo's existing style from `git log`. Fall back to Conventional Commits only when no pattern is detectable.
 
 ## Mirror the repo
 
@@ -14,8 +12,6 @@ Check `git log --pretty=format:'%s' -30` first. Match what you find:
 - **Subject style** — case, trailing period or not, length, verb-first vs. noun-first.
 - **Body style** — always / sometimes / never; bullets vs. prose; *why* vs. *what*.
 - **Footers** — only include `Co-Authored-By:`, `Signed-off-by:`, `Refs:` etc. if history already does. Never add `Co-Authored-By: Claude` unless prior commits already do.
-
-Do not impose Conventional Commits on a repo that doesn't use them.
 
 ## Fallback (when no pattern is detectable)
 
@@ -32,7 +28,9 @@ Subject: lowercase after the colon, no trailing period, ≤72 chars, imperative 
 
 ## Issue references
 
-Only include issue references if the repo's history already uses them (check `git log`) or the user explicitly asks. Detect the issue from the branch name (e.g., `fix/ABC-123-foo`, `gh-456-thing`) or from arguments.
+If the repo's `prepare-commit-msg` hook adds the issue key, don't add it yourself, and leave room for it in the subject. Find the hook with `git rev-parse --git-path hooks/prepare-commit-msg`.
+
+Otherwise, only include issue references if the repo's history already uses them (check `git log`) or the user explicitly asks. Detect the issue from the branch name (e.g., `fix/ABC-123-foo`, `gh-456-thing`) or from arguments.
 
 Place the reference at the **end of the subject line** (not the body), inside parentheses if it reads more naturally that way. Keep the subject under 72 chars.
 
@@ -66,11 +64,6 @@ Do NOT split when the change is one logical unit across several files, or when s
 
 Explicit invocation (e.g., `/commit`) IS the approval. Default to action.
 
-**Proceed silently when:**
-- The diff is one logical change OR has an obvious split boundary, AND
-- The convention is clear from `git log` (or the fallback applies), AND
-- The message accurately describes the diff.
-
 **Stop and ask when:**
 - The diff has multiple reasonable ways to split.
 - Sensitive files (`.env`, credentials, large binaries) are staged or about to be staged.
@@ -80,9 +73,6 @@ Explicit invocation (e.g., `/commit`) IS the approval. Default to action.
 ## Steps
 
 1. Treat caller-provided arguments as additional guidance. File paths/globs limit which files to commit; freeform text influences scope, summary, and body.
-2. Check `git status` and `git diff` to understand the changes.
-3. Check `git log --pretty=format:'%s' -30` to detect the convention.
-4. Decide how many commits to create (see [Splitting commits](#splitting-commits)).
-5. Stage only the intended files. Prefer naming files explicitly over `git add -A` when sensitive files could be in the tree.
-6. Commit with the detected style (or fallback). Only commit; do not push.
-7. Respect pre-commit hooks. If they fail, fix the underlying issue rather than using `--no-verify`.
+2. Stage only the intended files. Prefer naming files explicitly over `git add -A` when sensitive files could be in the tree.
+3. Only commit; do not push.
+4. Respect pre-commit hooks. If they fail, fix the underlying issue rather than using `--no-verify`.
