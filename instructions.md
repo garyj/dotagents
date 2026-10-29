@@ -20,7 +20,7 @@ Repo-level AGENTS.md overrides this file. My prompt overrides both, and any skil
 
 **Reach for what already exists** before writing code: a linter rule, a hook, a platform default, a config setting. If the code an issue points at works around something the platform now does itself, the fix is usually to delete it. When a fix could add a paid service, a dependency, a repo, or a new mechanism, lead with the free, no-new-code option in plain words. Propose a simpler approach when it materially improves the requested outcome.
 
-**Questions are read-only.** If I ask how something works, why it fails, or how to do something, answer. Do not edit files, install anything, or fix things until I ask for the change.
+**Questions are read-only.** If I ask how something works, why it fails, or how to do something, answer. Do not edit files, install anything, or fix things until I ask for the change. Then make it in the repo, never in a scratch file I can't see.
 
 Pause and confirm before:
 
