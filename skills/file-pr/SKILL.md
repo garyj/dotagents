@@ -26,7 +26,7 @@ The user often reads the description after the PR merged without them. Write it 
 - **Why the change:** one sentence: the problem, and what works after the merge.
 - **Things to note:** first `Door: one-way` or `Door: two-way`, with the reason in a few words. A two-way door is safe to revert. A one-way door is not, such as a data migration, deleted data, or a changed public contract. Then up to 3 bullets the user must not miss, such as a deliberate omission or a surprising decision.
 - **Change outline:** the smallest visual that shows the shape of the change, each next to one short sentence. Use a `diff` block for a call tree, file tree, data shape, or pseudocode that already existed, a plain block for a new one, and Mermaid for flow between parts. Never a file-by-file changelog. Leave this section out when a visual would not make the change easier to understand.
-- **Proof:** one line on how you proved the change. Mention a check only if you ran it.
+- **Proof:** one line on how you proved the change. Mention a check only if you ran it. For a visual change, upload a screenshot or a short recording with the `file-upload` skill and embed it here.
 
 End the description with these lines, in place of any attribution line the harness adds. Use the model names the harness and `autoreview` report. If a model name is unavailable, name the harness without guessing a model.
 
