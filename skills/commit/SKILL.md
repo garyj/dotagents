@@ -5,26 +5,14 @@ description: Use when the user explicitly says `commit` OR you just need to do a
 
 ## Mirror the repo
 
-Check `git log --pretty=format:'%s' -30` first. Match what you find:
-
-- **Prefix vocabulary** — e.g., `feat:`/`fix:` (Conventional), `add:`/`update:`/`fix:`/`cut:` (chezmoi/dotfiles), `Add X`/`Fix Y` (plain imperative), or none.
-- **Scope syntax** — does the repo use `type(scope): …`? Which scopes appear?
-- **Subject style** — case, trailing period or not, length, verb-first vs. noun-first.
-- **Body style** — always / sometimes / never; bullets vs. prose; *why* vs. *what*.
-- **Footers** — only include `Co-Authored-By:`, `Signed-off-by:`, `Refs:` etc. if history already does. Never add `Co-Authored-By: Claude` unless prior commits already do.
+Check `git log --pretty=format:'%s' -30` first and match the repo's style.
 
 ## Fallback (when no pattern is detectable)
 
-```
-<type>(<optional scope>): <description>
-```
-
-Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `chore`, `build`, `ci`, `infra`, `dev`.
+Use Conventional Commits, with two extra types:
 
 - **infra** — deployment infra: AWS/GCP/Render, Terraform, CDK, Kubernetes, CI runners, DNS, secrets.
 - **dev** — developer experience: tooling, local env, editor/IDE, shell/workflow, dev-only scripts.
-
-Subject: lowercase after the colon, no trailing period, ≤72 chars, imperative mood.
 
 ## Issue references
 
@@ -33,21 +21,6 @@ If the repo's `prepare-commit-msg` hook adds the issue key, don't add it yoursel
 Otherwise, only include issue references if the repo's history already uses them (check `git log`) or the user explicitly asks. Detect the issue from the branch name (e.g., `fix/ABC-123-foo`, `gh-456-thing`) or from arguments.
 
 Place the reference at the **end of the subject line** (not the body), inside parentheses if it reads more naturally that way. Keep the subject under 72 chars.
-
-**GitHub** — closing keywords auto-close the linked issue when the commit lands on the default branch or the PR merges:
-
-- `fix: resolve login redirect loop (closes #123)`
-- `fix: resolve login redirect loop, fixes #123`
-- Cross-repo: `closes owner/repo#123`
-- Reference only (no close): `(refs #123)`
-
-**Jira Smart Commits** — append the issue key plus optional commands at the end of the subject:
-
-- `fix login redirect loop ABC-123`
-- `fix login redirect loop ABC-123 #close`
-- `fix login redirect loop ABC-123 #time 1h #close`
-
-Commands: `#comment <text>`, `#time 2h <description>`, `#close` / `#done` / `#resolve`.
 
 ## Splitting commits
 
