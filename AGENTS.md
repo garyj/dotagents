@@ -17,5 +17,7 @@ check` (the only command that shows a patch that no longer applies), and `script
 
 A prek hook scans staged files for hidden Unicode. Run `prek install` once per clone.
 
+Work directly on `master` in this checkout. Create a worktree or branch only when the user asks for one.
+
 Commit messages start with a lowercase verb and colon (`add: ...`, `update: ...`, `fix: ...`). Do not commit without
 explicit approval.
