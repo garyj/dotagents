@@ -9,38 +9,31 @@ This service creates public URLs. Every response requests no indexing, but anyon
 A private GitHub repository does not make an externally hosted file private. Do not use this service for content
 that must require authentication. Cloudflare Access is a separate capability.
 
-Use existing authorization to share the file. Creating a document does not by itself authorize publishing it.
+Share a file only on existing authorization: the user's request, or a skill that tells you to publish, such as
+`html-communication` or the Proof section of `file-pr`. Creating a document does not by itself authorize publishing it.
 Upload the selected file unchanged and return its link so the user can share it wherever they need.
+
+## Run the script
+
+Run `scripts/file-host` from this skill's directory, by its absolute path. It prints the file's URL on stdout and the
+HTTP status on stderr, and exits non-zero on an HTTP error.
+
+```bash
+file-host put /absolute/path/to/recording.mp4
+file-host replace /absolute/path/to/report.html https://files.example.com/uuid/report.html
+file-host delete https://files.example.com/uuid/report.html
+```
+
+The script reads `FILE_HOST_URL` and `FILE_HOST_TOKEN` from the environment. The shell exports both on machines set
+up with chezmoi, so uploads need no 1Password unlock and work while nobody is at the keyboard. When either is unset,
+the script reads it from 1Password with `op read`, which can wait on a desktop unlock prompt. If a value is still
+missing after the lookup, report which one. Do not guess a hostname, print the token, or commit these values.
 
 ## Upload a file
 
-Read `FILE_HOST_URL` and `FILE_HOST_TOKEN` from the environment. The shell exports both on machines set up
-with chezmoi, so uploads need no 1Password unlock and work while nobody is at the keyboard. When either is
-unset, read it from 1Password with `op read`, which can wait on a desktop unlock prompt. The URL is the HTTPS
-origin of the upload service, without a file path. If a value is still missing after the lookup, report which
-one. Do not guess a hostname, print the token, or commit these values.
-
-| Variable | 1Password reference |
-| --- | --- |
-| `FILE_HOST_URL` | `op://AGLara/Agent Files Service - Cloudflare/URL` |
-| `FILE_HOST_TOKEN` | `op://AGLara/Agent Files Service - Cloudflare/password` |
-
-Upload one regular file, up to 100,000,000 bytes. Use this command with the selected local path:
-
-```bash
-file='/absolute/path/to/recording.mp4'
-: "${FILE_HOST_URL:=$(op read 'op://AGLara/Agent Files Service - Cloudflare/URL')}"
-: "${FILE_HOST_TOKEN:=$(op read 'op://AGLara/Agent Files Service - Cloudflare/password')}"
-: "${FILE_HOST_URL:?FILE_HOST_URL is not set and the 1Password lookup failed}"
-: "${FILE_HOST_TOKEN:?FILE_HOST_TOKEN is not set and the 1Password lookup failed}"
-printf 'X-Upload-Token: %s\n' "$FILE_HOST_TOKEN" |
-	curl --silent --show-error --fail-with-body --globoff --proto '=https' \
-		--header @- --upload-file "$file" "${FILE_HOST_URL%/}/"
-```
-
-The trailing slash lets curl append and encode the file's basename. The service sanitizes that name and adds
-a random directory, so repeated names create separate files. A successful upload returns HTTP 201 with the
-public URL as plain text. Use that returned URL directly.
+`put` uploads one regular file, up to 100,000,000 bytes. The service sanitizes the file's name and adds a random
+directory, so repeated names create separate files. A successful upload returns HTTP 201 with the public URL. Use
+that returned URL directly.
 
 On HTTP 401, stop and report an invalid token. On HTTP 413, report the size limit. Do not automatically retry
 an upload after a connection failure: the first upload might already have succeeded.
@@ -50,36 +43,16 @@ Verify the returned URL with `curl --silent --show-error --fail --head "$url"`. 
 
 ## Replace a file
 
-To update a file that is already shared, upload the new version to its existing URL. The URL and any `?preview=1`
-link stay the same, so nobody needs a new link. The local filename does not need to match. The previous content
-is gone; the service keeps no history.
-
-```bash
-file='/absolute/path/to/report.html'
-url='https://files.example.com/uuid/report.html'
-: "${FILE_HOST_TOKEN:=$(op read 'op://AGLara/Agent Files Service - Cloudflare/password')}"
-: "${FILE_HOST_TOKEN:?FILE_HOST_TOKEN is not set and the 1Password lookup failed}"
-printf 'X-Upload-Token: %s\n' "$FILE_HOST_TOKEN" |
-	curl --silent --show-error --fail-with-body --globoff --proto '=https' \
-		--header @- --upload-file "$file" "$url"
-```
+`replace` puts the new version at the file's existing URL. The URL and any `?preview=1` link stay the same, so
+nobody needs a new link. The local filename does not need to match. The previous content is gone; the service keeps
+no history.
 
 A successful replacement returns HTTP 200 with the same URL, and it is safe to retry. HTTP 404 means nothing
-exists at that URL, so check the link. Do not fall back to a root upload: that creates a separate file with a
-new link.
+exists at that URL, so check the link. Do not fall back to `put`: that creates a separate file with a new link.
 
 ## Delete a file
 
 Delete only when the user asks for it and names the link. There is no undo and no listing to find it again.
-
-```bash
-url='https://files.example.com/uuid/report.html'
-: "${FILE_HOST_TOKEN:=$(op read 'op://AGLara/Agent Files Service - Cloudflare/password')}"
-: "${FILE_HOST_TOKEN:?FILE_HOST_TOKEN is not set and the 1Password lookup failed}"
-printf 'X-Upload-Token: %s\n' "$FILE_HOST_TOKEN" |
-	curl --silent --show-error --fail-with-body --globoff --proto '=https' \
-		--header @- --request DELETE "$url"
-```
 
 HTTP 204 means the file is gone and the link now returns 404. HTTP 404 means nothing exists at that URL.
 

@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Upload, replace, or delete a file on the agent file host.
+#
+#   file-host put FILE            upload FILE and print its new public URL
+#   file-host replace FILE URL    put FILE's content at URL; the URL stays valid
+#   file-host delete URL          remove the file at URL
+#
+# The HTTP status goes to stderr. Exits non-zero on an HTTP error.
+set -euo pipefail
+
+op_item='op://AGLara/Agent Files Service - Cloudflare'
+
+usage() {
+    echo "usage: file-host put FILE | replace FILE URL | delete URL" >&2
+    exit 2
+}
+
+request() {
+    : "${FILE_HOST_TOKEN:=$(op read "$op_item/password")}"
+    : "${FILE_HOST_TOKEN:?FILE_HOST_TOKEN is not set and the 1Password lookup failed}"
+    # The token goes in on stdin so it never shows in the process list.
+    printf 'X-Upload-Token: %s\n' "$FILE_HOST_TOKEN" |
+        curl --silent --show-error --fail-with-body --globoff --proto '=https' \
+            --write-out '\n%{stderr}HTTP %{http_code}\n' --header @- "$@"
+}
+
+case "${1:-}" in
+    put)
+        if [ $# -ne 2 ] || [ ! -f "$2" ]; then usage; fi
+        : "${FILE_HOST_URL:=$(op read "$op_item/URL")}"
+        : "${FILE_HOST_URL:?FILE_HOST_URL is not set and the 1Password lookup failed}"
+        # A trailing slash makes curl append and encode the file's basename.
+        request --upload-file "$2" "${FILE_HOST_URL%/}/"
+        ;;
+    replace)
+        if [ $# -ne 3 ] || [ ! -f "$2" ]; then usage; fi
+        request --upload-file "$2" "$3"
+        ;;
+    delete)
+        if [ $# -ne 2 ]; then usage; fi
+        request --request DELETE "$2"
+        ;;
+    *) usage ;;
+esac
