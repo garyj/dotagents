@@ -5,6 +5,7 @@
   "vetted": [
     "2026-08-23 full read + diff vs upstream, identical apart from list renumbering, prose-only style rules, verdict OK",
     "2026-10-04 diff vs 99559f2, prose rules only, +rules 32/33 (mannered prose, over-compression), -soul section and 5 content rules; upstream disable-model-invocation reverted by patch 001, verdict OK",
-    "2026-10-14 diff vs c86f349, prose tightening, description drops 'Must always apply', rule numbers unchanged, disable-model-invocation back upstream and patch 001 dropped on purpose, verdict OK"
+    "2026-10-14 diff vs c86f349, prose tightening, description drops 'Must always apply', rule numbers unchanged, disable-model-invocation back upstream and patch 001 dropped on purpose, verdict OK",
+    "2026-11-11 no upstream change, patch 001 re-added on purpose: model-invocable again, since as a hidden skill it loaded in 24 of 143 Claude Code sessions, verdict OK"
   ]
 }

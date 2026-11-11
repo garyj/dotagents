@@ -1,0 +1,14 @@
+Model-invocable: as a hidden skill it loaded in 17 of 25 PR sessions, while file-pr, which is listed, loaded in 24 of 25.
+
+diff --git a/SKILL.md b/SKILL.md
+index 3e6d261..289eee9 100644
+--- a/SKILL.md
++++ b/SKILL.md
+@@ -1,7 +1,6 @@
+ ---
+ name: technical-writing
+ description: "Layered technical-writing standard: Diátaxis structure, Google developer style sentences, STE instruction rules, Global English syntax. Use for /technical-writing or when writing or reviewing docs, RFCs, readmes, PR descriptions, or commit messages."
+-disable-model-invocation: true
+ ---
+ 
+ # Technical writing

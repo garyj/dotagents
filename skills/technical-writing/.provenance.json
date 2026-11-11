@@ -5,6 +5,7 @@
   "vetted": [
     "2026-08-29 full read of all 130 lines, prose rules only, no commands, no network calls, no foreign-agent paths, verdict OK WITH CAVEATS; explicit-request-only via disable-model-invocation, and its jargon rule tells agents to edit vendored unslop, which we never hand-edit",
     "2026-10-04 diff vs 68836dd, prose only, jargon-rule caveat fixed upstream (now proposes unslop additions instead of editing), checklist dropped, patch 001 still applies, verdict OK",
-    "2026-10-14 diff vs c86f349, prose tightening only, disable-model-invocation back upstream and patch 001 dropped on purpose since the path reads in instructions.md are the route that fires, verdict OK"
+    "2026-10-14 diff vs c86f349, prose tightening only, disable-model-invocation back upstream and patch 001 dropped on purpose since the path reads in instructions.md are the route that fires, verdict OK",
+    "2026-11-11 no upstream change, patch 001 re-added on purpose: model-invocable again, since as a hidden skill it loaded in 17 of 25 PR sessions, verdict OK"
   ]
 }

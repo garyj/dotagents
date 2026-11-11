@@ -1,0 +1,14 @@
+Model-invocable: as a hidden skill it loaded in 24 of 143 Claude Code sessions, while listed skills with a concrete trigger load in over 90%.
+
+diff --git a/SKILL.md b/SKILL.md
+index 97f5b64..be42292 100644
+--- a/SKILL.md
++++ b/SKILL.md
+@@ -1,7 +1,6 @@
+ ---
+ name: unslop
+ description: Cut AI tells from any writing.
+-disable-model-invocation: true
+ ---
+ 
+ # Unslop
