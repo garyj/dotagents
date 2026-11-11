@@ -67,7 +67,7 @@ Checks must pass; report unresolved failures without claiming completion. If a p
 
 # Memory
 
-Write a fact about a repository into that repository, in its AGENTS.md or docs, in the PR that taught it. This is the one exception to keeping finds out of the current change. Other agents, other machines, and other developers read only the repo. Keep agent memory for facts about me and my machines.
+Write a fact about a repository into that repository, in its AGENTS.md or docs, in the PR that taught it. This is the one exception to keeping finds out of the current change. Other agents, other machines, and other developers read only the repo. Auto-memory is off in Claude Code and Codex. Write a lasting fact about me or my machines into this file.
 
 # Writing and Tools
 
