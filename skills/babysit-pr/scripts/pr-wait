@@ -11,7 +11,8 @@ Progress and errors that do not end the run go to stderr.
 
 --until
   green       required checks passed on the current head (every CI check when
-              the base branch requires none)
+              the base branch requires none). A skipped required check counts
+              as passed only once no other check is pending.
   ready       green, Copilot reviewed the PR or Greptile or Macroscope reviewed
               the current head, and no review thread is unresolved (default)
   any-change  stop after the first poll that prints an event
@@ -369,9 +370,18 @@ class Watcher:
         # gates except the review bots' own checks.
         gate = self.required or {name for name in checks if not bot_name(name)}
         label = "required check" if self.required else "check"
+        watched = {name: c for name, c in checks.items() if bot_name(name) not in ADVISORY_BOTS}
+        any_pending = any(c["bucket"] == "pending" for c in watched.values())
 
         def bucket(name: str) -> str:
-            return checks[name]["bucket"] if name in checks else "pending"
+            if name not in checks:
+                return "pending"
+            # A job that `needs:` a running matrix gets no check until the matrix
+            # ends, so a skipped copy of its name from another run, such as a
+            # pull_request run that skips itself, can stand in for it until then.
+            if checks[name]["bucket"] == "skipping" and any_pending:
+                return "pending"
+            return checks[name]["bucket"]
 
         fail_lines: list[str] = []
         for name in sorted(gate):
@@ -379,7 +389,6 @@ class Watcher:
                 link = checks[name]["link"]
                 fail_lines.append(f"{label} failed: {name} {link}")
                 self.emit(f"fail:{head}:{name}:{link}", fail_lines[-1])
-        watched = {name: c for name, c in checks.items() if bot_name(name) not in ADVISORY_BOTS}
         gate_done = bool(gate) and all(bucket(n) != "pending" for n in gate)
         all_done = gate_done and all(c["bucket"] != "pending" for c in watched.values())
         # Checks appear a few seconds after a push. Two identical polls in a row
