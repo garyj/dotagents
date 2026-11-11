@@ -60,7 +60,7 @@ Checks must pass; report unresolved failures without claiming completion. If a p
 - **Branch and worktree naming.** For GitHub or Jira issues: `<type>/<KEY>-<slug>` (feat, fix, doc, chore), key UPPERCASE: `feat/GH-123-add-login`, `fix/PROJ-456-broken-link`. Without an issue: `<type>/<slug>`.
 - **Commits.** Follow the `commit` skill (`~/.agents/skills/commit/SKILL.md`).
 - **Pre-commit failures.** Fix what the hook reports. Never `--no-verify`.
-- **Commits, pushes, and PRs: standing authorization.** On a feature branch, commit verified work and push it without asking. File a PR when I ask, with the `file-pr` skill, and watch it with `babysit-pr`.
+- **Commits, pushes, and PRs: standing authorization.** On a feature branch, commit verified work, push it, and file a PR with the `file-pr` skill without asking. Watch the PR with `babysit-pr`.
 
 # Memory
 
