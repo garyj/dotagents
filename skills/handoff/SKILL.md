@@ -16,4 +16,6 @@ A long analysis makes a slow, noisy implementation session. Hand the work to a f
    cd <worktree path> && claude "Implement <owner>/<repo>#<n>. Read the issue first."
    ```
 
+   Use your own launcher in place of `claude`, for example `codex`.
+
 Do not start implementing or edit files in this session.

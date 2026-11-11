@@ -39,7 +39,8 @@ Then:
 
 - Delete the remote branch with `git push origin --delete <branch>` if its PR merged and the branch still exists.
 - Stop any container or process the session started outside a worktree.
-- If the main checkout is clean, switch it to the default branch and run `git pull --ff-only`.
+- If the main checkout is clean, switch it to the default branch and run `git pull --ff-only`. If that fails, leave
+  the default branch as it is and report how many unpushed commits it has. Never `--no-ff` on the default branch.
 
 ## Report
 

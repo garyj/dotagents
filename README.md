@@ -28,7 +28,7 @@ repo and a `run_after_` script runs `scripts/install`.
 | codex    | `~/.codex/AGENTS.md` -> `instructions.md`           | scans `~/.agents/skills` natively               |
 | gemini   | `~/.gemini/GEMINI.md` -> `instructions.md`          | scans `~/.agents/skills` natively               |
 | pi       | `~/.pi/agent/AGENTS.md` -> `instructions.md`        | scans `~/.agents/skills` natively               |
-| opencode | `~/.config/opencode/AGENTS.md` -> `instructions.md` | no skills feature                               |
+| opencode | `~/.config/opencode/AGENTS.md` -> `instructions.md` | scans `~/.agents/skills` natively               |
 | delta    | `~/.config/delta/AGENTS.md` -> `instructions.md`    | not managed here                                |
 | grok     | claude's `~/.claude/CLAUDE.md` via its compat scan  | claude's `~/.claude/skills` via its compat scan |
 | copilot  | per-repo only                                       | scans `~/.agents/skills` natively               |
@@ -43,6 +43,7 @@ repo and a `run_after_` script runs `scripts/install`.
   directories. Read the `vendor-skill` skill under `.claude/skills/` before adding, updating, or removing one.
 - `scripts/install` makes the symlinks in the table above, one per skill for Claude Code. Run it again after adding or
   removing a skill.
+- `pstack-models.md` is the model table that pstack skills read in every harness. `/setup-pstack` rewrites it.
 - `services/file-host/` hosts agent attachments through Cloudflare Workers and R2. See its [setup guide](services/file-host/SETUP.md).
 
 ## Vendored skills
@@ -69,6 +70,10 @@ Each of these looks like a gap but is deliberate:
 - claude gets one link per skill, not a link to `skills/`. Claude Code syncs claude.ai skills into
   `~/.claude/skills/synced/`; through a directory link that bucket landed in the shared store, and codex listed it as
   nine more skills with the longest descriptions in its catalogue.
+- opencode gets no skills symlink either. It scans `~/.agents/skills` and `~/.claude/skills`, and lists a skill it
+  finds by both routes once. The second route also reaches Claude Code's `synced/` bucket, so opencode lists the
+  claude.ai skills too. `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1` turns that route off. opencode lists skills marked
+  `disable-model-invocation`.
 - grok gets no wrapper and no symlink. Its Claude Code compat scan, which has no off switch, already loads
   `~/.claude/CLAUDE.md` and `~/.claude/skills`. Adding `~/.grok/AGENTS.md` or `~/.grok/skills` loads everything
   twice.

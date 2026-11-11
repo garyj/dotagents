@@ -17,7 +17,7 @@ current; APM moves fast, so fetch the relevant ramp instead of relying on traini
 - The claude target resolves `${VAR}` placeholders in MCP headers and env at install time and writes the literal
   value into `.mcp.json`; copilot and kiro substitute at runtime. A shell that auto-loads `.env` makes the leak
   automatic. Keep real keys out of `apm.yml`; prefer OAuth remote HTTP servers.
-- `apm audit --file <path>` takes one path per call, so loop it over many files; this repo's prek hook does exactly
+- `apm audit --file <path>` takes one path per call, so loop it over many files; the dotagents prek hook does exactly
   that. `--strip` removes the characters. `apm audit --ci` runs the lockfile and policy checks.
 - The PyPI packages `apm` and `apm-cli` are unrelated projects. APM ships as GitHub release tarballs.
 - When the binary comes from a version manager (mise and the like), don't use `apm self-update`; it fights the

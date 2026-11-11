@@ -11,8 +11,8 @@ Check `git log --pretty=format:'%s' -30` first and match the repo's style.
 
 Use Conventional Commits, with two extra types:
 
-- **infra** — deployment infra: AWS/GCP/Render, Terraform, CDK, Kubernetes, CI runners, DNS, secrets.
-- **dev** — developer experience: tooling, local env, editor/IDE, shell/workflow, dev-only scripts.
+- **infra**: deployment infra such as AWS/GCP/Render, Terraform, CDK, Kubernetes, CI runners, DNS, secrets.
+- **dev**: developer experience such as tooling, local env, editor/IDE, shell/workflow, dev-only scripts.
 
 ## Issue references
 
@@ -44,7 +44,7 @@ Explicit invocation (e.g., `/commit`) IS the approval. Default to action.
 **Stop and ask when:**
 - The diff has multiple reasonable ways to split.
 - Sensitive files (`.env`, credentials, large binaries) are staged or about to be staged.
-- About to touch published history (amend, rebase, force-push).
+- About to rewrite history on the default branch or a branch someone else uses.
 - The repo style requires a body and the *why* is genuinely unclear.
 
 ## Steps

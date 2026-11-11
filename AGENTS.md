@@ -1,15 +1,13 @@
 # dotagents
 
-This checkout is the live agent config. `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, and the other agents' global
-instruction files are symlinks to `instructions.md`. Claude Code gets one symlink per skill under `~/.claude/skills/`;
-Codex, gemini, pi, and copilot scan `skills/` directly. A saved edit reaches the next agent session with no install
-step, so a broken `instructions.md` breaks every agent at once.
+This checkout is the live agent config. Every agent's global instruction file is a symlink to `instructions.md`, so a
+saved edit reaches the next agent session with no install step, and a broken `instructions.md` breaks every agent at
+once.
 
-- `instructions.md` is the shared body.
-- `skills/<name>/` is one skill. A `.provenance.json` marks a copy of someone else's skill, owned by
-  `scripts/vendor_skill.py` with local changes in `.patches/`. Never hand-edit one without capturing the edit as a
-  patch. Invoke the `vendor-skill` skill before adding, updating, patching, or removing one. Run `scripts/install`
-  after adding or removing a skill so `~/.claude/skills/` gets or loses its link.
+- A `skills/<name>/.provenance.json` marks a copy of someone else's skill, owned by `scripts/vendor_skill.py` with
+  local changes in `.patches/`. Never hand-edit one without capturing the edit as a patch. Read
+  `.claude/skills/vendor-skill/SKILL.md` before adding, updating, patching, or removing one.
+- Run `scripts/install` after adding or removing a skill so `~/.claude/skills/` gets or loses its link.
 - Symlinks in `skills/` that point outside the repo belong to chezmoi and are listed in `.git/info/exclude`. Leave
   them alone.
 - README.md carries the per-agent wiring table and the traps. Read it before changing how any file is found.

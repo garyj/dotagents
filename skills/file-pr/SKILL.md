@@ -9,17 +9,19 @@ If `gh repo view <repo> --json viewerPermission` for the PR's target repo is `RE
 
 If a PR for this branch already exists, push and leave its title and description alone, because the user may have edited them. Update only the credit lines.
 
-If the working tree has uncommitted changes, stop and say so. Do not stash or commit them. Point the user at the `commit` skill.
+Commit the changes that belong to this change with the `commit` skill. Leave any other uncommitted changes where they are and name them in your report. Do not stash or commit them.
 
 Never push to the default branch unless the user asks. Before you push, list the branch's commits with `git log origin/<default>..HEAD`. If it lists commits from an unpushed local default branch, rebase them out with `git rebase --onto origin/<default> <default>`.
 
 ## Cross-model review
 
-Before the push, run `autoreview` (wrapper on PATH; skill at `~/.agents/skills/autoreview/SKILL.md`) and reach a clean exit, unless the user waived it for this change. The authoring model never reviews its own work: Claude-authored code keeps the Codex default engine, Codex-authored code runs `--engine claude`, and the reviewer stays the same for every cycle of one loop. Findings are advisory; verify each against the real code. Review feedback never grows the PR past its original goal: fix real shortcomings, decline the rest with a one-line reason. After two fix cycles without convergence, stop and report.
+Before the push, run `autoreview` with no arguments. The wrapper on PATH reviews this branch against the default branch at P1. Exit 0 is clean, exit 1 means findings, and exit 2 means the review did not finish. Read `~/.agents/skills/autoreview/SKILL.md` only when the wrapper fails or you need another mode. Reach a clean exit, unless the user waived it for this change. The authoring model never reviews its own work: Claude-authored code keeps the Codex default engine, Codex-authored code runs `--engine claude`, and the reviewer stays the same for every cycle of one loop. Findings are advisory; verify each against the real code. Review feedback never grows the PR past its original goal: fix real shortcomings, decline the rest with a one-line reason. After two fix cycles without convergence, stop and report.
 
 ## Title and description
 
 Follow the repo's title convention, and say what the change does rather than how: "cut websocket frame size by 70%+ with gzipping", not "negotiate permessage-deflate on the websocket".
+
+Before you write the description, read `~/.agents/skills/technical-writing/SKILL.md` and `~/.agents/skills/unslop/SKILL.md`.
 
 The user often reads the description after the PR merged without them. Write it so they understand the change in a minute, with these sections:
 
@@ -35,6 +37,6 @@ Created with <model> in <harness>. <Subagent models that wrote part of the chang
 Reviewed with autoreview: <N> rounds with <reviewer model>. Verdict: <final verdict>.
 ```
 
-Keep the verdict line even when the reviewer was not satisfied. Update both lines when you push more commits to the PR.
+Keep the verdict line even when the reviewer was not satisfied. When you push more commits to the PR, update the first line. Update the review line only when `autoreview` ran again.
 
 Open a real PR, not a draft, so review bots run. Then watch it with the `babysit-pr` skill.

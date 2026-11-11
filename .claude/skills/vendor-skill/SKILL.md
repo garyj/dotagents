@@ -54,8 +54,8 @@ the blast radius of one that is not fully usable yet.
 ## Changing one: mostly, don't
 
 Vendored means verbatim. Put your changes outside the file, where they cannot conflict with upstream: the global
-instructions, a wrapper on PATH, config. The clean-exit gate and the P1 default for autoreview live in instructions.md
-and `~/bin/autoreview`, and have survived every upstream rewrite untouched.
+instructions, a wrapper on PATH, config. The clean-exit gate for autoreview lives in the `file-pr` skill and the P1
+default in `~/bin/autoreview`, and both have survived every upstream rewrite untouched.
 
 A patch is for a one-line mechanical change only, such as a frontmatter flag:
 

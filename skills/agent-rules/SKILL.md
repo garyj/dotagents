@@ -37,8 +37,7 @@ rule's merits. Report what went and what stayed.
 
 ## Adding a rule
 
-No drive-by additions. If the current change ran into a trap that passes all
-three tests, add the rule to the repo's rules file in the same PR. Propose
-anything else that would have helped in your reply, with the evidence that it
-came up more than once. Do not edit the rules file as a side effect of unrelated
-work.
+No drive-by additions. Do not edit a rules file as a side effect of other work.
+When the current change ran into a trap that passes all three tests, put the
+exact line in your reply, with the evidence that it came up more than once. Add
+it to the file only when the user asks.

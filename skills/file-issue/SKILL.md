@@ -11,6 +11,8 @@ If `gh repo view <repo> --json viewerPermission` is `READ` or `TRIAGE`, the repo
 
 Search open and closed issues first. Comment on an open match instead of filing. Link a closed match from the new issue.
 
+Before you write the body, read `~/.agents/skills/technical-writing/SKILL.md` and `~/.agents/skills/unslop/SKILL.md`.
+
 The body needs:
 
 - **Problem:** the evidence you saw yourself, such as output, a traceback, or file paths, with the date.

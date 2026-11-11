@@ -12,7 +12,7 @@ Run these from the repository root and read the output; do not paste it back.
 - `{ git ls-files; git ls-files --others --exclude-standard; } | cut -d/ -f1-2 | sort -u | head -60` for the layout
 - the first 20 lines of any `package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`, `pom.xml`, or `composer.json`
   at the root
-- `AGENTS.md`, else `CLAUDE.md`, else `COPILOT.md`, if any
+- `AGENTS.md`, else `CLAUDE.md`, if any
 - the first 80 lines of `README.md`, if any
 
 Then report, under 200 words: the project type and stack in one line, three to five key directories, the current
