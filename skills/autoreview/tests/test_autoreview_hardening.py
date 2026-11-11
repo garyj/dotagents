@@ -4,8 +4,10 @@ from __future__ import annotations
 import argparse
 import base64
 import contextlib
+import hashlib
 import copy
 import io
+import itertools
 import json
 import os
 import re
@@ -299,6 +301,74 @@ class AutoreviewMixedTargetTests(unittest.TestCase):
                 record = next(record for record in captured.mixed if record.path == span.path)
                 expected = record.staged if span.target == "index" else record.unstaged
                 self.assertEqual(captured.text.encode()[span.start:span.end], expected.encode())
+
+    def test_partial_document_staging_survives_an_omitted_sibling_type_change(self):
+        for directory, staged, reverse, sibling_name in itertools.product(
+            ("docs/flows/credential-source-egress", "docs/reference/credential-sources",
+             "specs/rfcs/0023-egress-proxy-credential-lifecycle"),
+            (False, True), (False, True), ("a-sibling.md", "z-sibling.md"),
+        ):
+            if os.name == "nt" and not staged:
+                continue  # Working-tree type changes require native symlinks.
+            with self.subTest(directory=directory, staged=staged, reverse=reverse, sibling=sibling_name), \
+                    tempfile.TemporaryDirectory() as tempdir:
+                repo = init_repo(Path(tempdir))
+                git(repo, "config", "core.autocrlf", "false")
+                if os.name == "nt":
+                    git(repo, "config", "core.symlinks", "false")
+                doc_path = f"{directory}/guide.md"
+                sibling_path = f"{directory}/{sibling_name}"
+                doc = repo / doc_path
+                doc.parent.mkdir(parents=True)
+                doc.write_bytes(b"base document\n")
+                (repo / "allowed.py").write_bytes(b"base source\n")
+                (repo / ".env").write_bytes(b"PRIVATE_BASE_SENTINEL\n")
+                git(repo, "add", ".")
+
+                def select_sibling(link):
+                    # Real index modes work on Windows without symlink privilege.
+                    payload = repo.parent / "payload"
+                    payload.write_bytes(b"PRIVATE_LINK_SENTINEL" if link else b"OMITTED_TEXT_SENTINEL\n")
+                    oid = git(repo, "hash-object", "-w", str(payload)).strip()
+                    mode = "120000" if link else "100644"
+                    git(repo, "update-index", "--add", "--cacheinfo", f"{mode},{oid},{sibling_path}")
+                    git(repo, "checkout-index", "--force", "--", sibling_path)
+
+                select_sibling(reverse)
+                git(repo, "commit", "-qm", "baseline")
+                if staged:
+                    select_sibling(not reverse)
+                else:
+                    sibling = repo / sibling_path
+                    sibling.unlink()
+                    if reverse:
+                        sibling.write_bytes(b"OMITTED_TEXT_SENTINEL\n")
+                    else:
+                        sibling.symlink_to("PRIVATE_LINK_SENTINEL")
+                # Both versions of the document must retain exact source attribution,
+                # even when the omitted transition occupies two adjacent patch sections.
+                doc.write_bytes("staged document 界\n".encode())
+                (repo / "allowed.py").write_bytes(b"review this source\n")
+                (repo / ".env").write_bytes(b"PRIVATE_NEW_SENTINEL\n")
+                git(repo, "add", doc_path, "allowed.py", ".env")
+                doc.write_bytes("working document 界\n".encode())
+
+                captured = self.helper["local_bundle"](repo)
+                self.assertEqual(captured.paths, {doc_path, "allowed.py"})
+                self.assertIn("+review this source", captured.text)
+                for omitted in (sibling_name, "PRIVATE_LINK_SENTINEL", "OMITTED_TEXT_SENTINEL",
+                                "PRIVATE_BASE_SENTINEL", "PRIVATE_NEW_SENTINEL"):
+                    self.assertNotIn(omitted, captured.text)
+                record, = captured.mixed
+                self.assertEqual(record.path, doc_path)
+                self.assertEqual(record.index.content, "staged document 界\n")
+                self.assertEqual(record.working_tree.content, "working document 界\n")
+                self.assertEqual({span.target for span in captured.spans}, {"index", "working_tree"})
+                for span in captured.spans:
+                    self.assertEqual(span.path, doc_path)
+                    expected = record.staged if span.target == "index" else record.unstaged
+                    self.assertEqual(captured.text.encode()[span.start:span.end], expected.encode())
+                self.helper["verify_mixed_sources"](repo, captured.mixed)
 
     def test_mixed_full_dataset_preference_rebatches_before_tiny_change_splits(self):
         budget, minimum = 512_000, 32_000
@@ -1665,6 +1735,42 @@ class AutoreviewHardeningTests(unittest.TestCase):
                 self.assertNotIn("newer committed bytes", sends[0])
                 self.assertNotIn("src/token_count.py", sends[0].split("# Change Bundle\n", 1)[1])
 
+    def test_source_context_credential_flow_uses_frozen_document(self):
+        paths = ("docs/flows/credential-source-egress/model-requests.md",
+                 "docs/reference/repository-credentials/prepared-native-git.md",
+                 "docs/reference/credential-sources/protected-inference.md",
+                 "specs/rfcs/0023-egress-proxy-credential-lifecycle/github-installation-access.md",
+                 "specs/rfcs/0023-egress-proxy-credential-lifecycle/index.md")
+        content = b"# Model requests\n\nAuthorize each request before releasing a key.\n"
+        for path, role in itertools.product(paths, ("--source-context", "--source-context-file")):
+            with self.subTest(path=path, role=role), self.committed_context_fixture(
+                path=path, role=role, content=content,
+            ) as (repo, sends, *_):
+                commit = git(repo, "rev-parse", "HEAD").strip()
+                oid = git(repo, "rev-parse", f"HEAD:{path}").strip()
+                (repo / path).write_text("Dirty document must not replace committed context.\n")
+                self.assertEqual(self.helper["main_impl"](), 0)
+                self.assertEqual(len(sends), 1)
+                self.assertIn(content.decode(), sends[0])
+                self.assertIn(f"commit={commit} blob={oid} mode=100644; context only", sends[0])
+                self.assertNotIn("Dirty document", sends[0])
+
+    def test_source_context_compound_directories_use_tracked_source_rules(self):
+        for path in (
+            "packages/contracts/src/drivers/credential-proxy/index.ts",
+            "drivers/repository-credentials/store.go",
+            ".agents/skills/credential-proxy/SKILL.md",
+        ):
+            for content in (b"// first source revision\n", b"// revised source\n"):
+                with self.subTest(path=path, content=content), self.committed_context_fixture(
+                    path=path, content=content,
+                ) as (_repo, sends, *_):
+                    # Normal source capture is independent of the reviewed-pin table.
+                    main = self.helper["main_impl"]
+                    with mock.patch.dict(main.__globals__, {"REVIEWED_CONTEXT_BLOBS": {}}):
+                        self.assertEqual(main(), 0)
+                    self.assertIn(content.decode(), sends[0])
+
     def test_source_context_duplicates_keep_full_source_in_one_planned_pass(self):
         content = b"# context\n" * 30_000
         for role in ("--source-context", "--source-context-file"):
@@ -1738,6 +1844,20 @@ class AutoreviewHardeningTests(unittest.TestCase):
                 with self.assertRaisesRegex(SystemExit, "sensitive filename"):
                     self.helper["main_impl"]()
                 self.assertFalse(sends)
+        for path, role in itertools.product(
+            ("docs/flows/credential-source-egress/model-requests.md",
+             "docs/reference/repository-credentials/prepared-native-git.md",
+             "docs/reference/credential-sources/protected-inference.md",
+             "specs/rfcs/0023-egress-proxy-credential-lifecycle/github-installation-access.md",
+             "specs/rfcs/0023-egress-proxy-credential-lifecycle/index.md"),
+            ("--dataset", "--prompt-file"),
+        ):
+            with self.subTest(path=path, role=role), self.committed_context_fixture(
+                path=path, role=role,
+            ) as (_repo, sends, *_):
+                with self.assertRaisesRegex(SystemExit, "sensitive"):
+                    self.helper["main_impl"]()
+                self.assertFalse(sends)
 
     def test_source_context_requires_committed_review_mode(self):
         for role, mode in ((role, mode) for role in ("--source-context", "--source-context-file")
@@ -1750,6 +1870,95 @@ class AutoreviewHardeningTests(unittest.TestCase):
                     self.helper["main_impl"]()
                 self.assertFalse(sends)
 
+    def test_source_context_policy_only_admits_reviewed_path_and_bytes(self):
+        sample = b"apiVersion: v1\nkind: Service\n"
+        path = "charts/example/templates/credentials-service.yaml"
+        digest = hashlib.sha256(sample).hexdigest()
+        oid = hashlib.sha1(b"blob " + str(len(sample)).encode() + b"\0" + sample).hexdigest()
+        for role, selected, content, expected_digest, accepted in (
+            ("--source-context", path, sample, digest, True),
+            ("--source-context-file", path, sample, digest, True),
+            ("--source-context", path, sample + b"# changed\n", digest, False),
+            ("--source-context", path, sample, "0" * 64, False),
+            ("--source-context", "charts/other/templates/credentials-service.yaml", sample, digest, False),
+            ("--prompt-file", path, sample, digest, False),
+        ):
+            with self.subTest(role=role, selected=selected, accepted=accepted), self.committed_context_fixture(
+                path=selected, role=role, content=content,
+            ) as (_repo, sends, *_):
+                main = self.helper["main_impl"]
+                with mock.patch.dict(main.__globals__, {"REVIEWED_CONTEXT_BLOBS": {
+                    path: (oid, expected_digest),
+                }}):
+                    if accepted:
+                        self.assertEqual(main(), 0)
+                        self.assertIn(sample.decode(), sends[0])
+                    else:
+                        with self.assertRaisesRegex(SystemExit, "sensitive|digest"):
+                            main()
+                        self.assertFalse(sends)
+
+    def test_source_context_pin_scope_and_mode(self):
+        content = b"// synthetic module for policy review\n"
+        for path, executable, allowed in (
+            ("src/credential-proxy/index.ts", False, True),
+            ("fixtures/repository-credentials/state.mjs", False, True),
+            ("apps/controller/src/drivers/secret/kubernetes/index.ts", False, True),
+            ("apps/controller/src/drivers/secret/kubernetes/index.ts", True, False),
+            ("apps/controller/src/drivers/secret/kubernetes/other.ts", False, False),
+            ("apps/controller/src/drivers/secrets/kubernetes/index.ts", False, False),
+            ("src/credential-proxy/index.ts", True, True),
+            (".ssh/credential-proxy/index.ts", False, False),
+            ("credentials/session.json", False, False),
+            ("credentials/prod.ts", False, False),
+            ("src/Secrets/runtime.ts", False, False),
+        ):
+            def setup(repo, _source):
+                if executable:
+                    git(repo, "update-index", "--chmod=+x", path)
+
+            with self.subTest(path=path, executable=executable), self.committed_context_fixture(
+                path=path, content=content, setup=setup,
+            ) as (repo, sends, *_):
+                pin = (git(repo, "rev-parse", f"HEAD:{path}").strip(), hashlib.sha256(content).hexdigest())
+                main = self.helper["main_impl"]
+                with mock.patch.dict(main.__globals__, {"REVIEWED_CONTEXT_BLOBS": {path: pin}}):
+                    if allowed:
+                        self.assertEqual(main(), 0)
+                        self.assertIn(content.decode(), sends[0])
+                    else:
+                        with self.assertRaisesRegex(SystemExit, "sensitive --source-context"):
+                            main()
+                        self.assertFalse(sends)
+
+    def test_source_context_literal_pin_keeps_content_and_topology_checks(self):
+        path = "apps/controller/src/drivers/secret/kubernetes/index.ts"
+        sample = b"export const synthetic = true;\n"
+        oid = hashlib.sha1(b"blob " + str(len(sample)).encode() + b"\0" + sample).hexdigest()
+        pin = (oid, hashlib.sha256(sample).hexdigest())
+        for role in ("--source-context", "--source-context-file"):
+            for kind in ("exact", "edited", "missing pin", "symlink"):
+                content = sample + b"// changed\n" if kind == "edited" else sample
+                with self.subTest(role=role, kind=kind), self.committed_context_fixture(
+                    path=path, role=role, content=content,
+                ) as (repo, sends, *_):
+                    if kind == "symlink":
+                        if os.name == "nt":
+                            self.skipTest("symlink topology check requires POSIX")
+                        (repo / path).unlink()
+                        (repo / path).symlink_to(repo / "source.md")
+                    pins = {} if kind == "missing pin" else {path: pin}
+                    main = self.helper["main_impl"]
+                    with mock.patch.dict(main.__globals__, {"REVIEWED_CONTEXT_BLOBS": pins}):
+                        if kind == "exact":
+                            self.assertEqual(main(), 0)
+                            self.assertIn(sample.decode(), sends[0])
+                            self.assertIn(f"blob={oid} mode=100644", sends[0])
+                        else:
+                            with self.assertRaises(SystemExit):
+                                main()
+                            self.assertFalse(sends)
+
     def test_source_context_retains_strict_directories_stores_and_keyfiles(self):
         paths = (
             "private/parser.py", "credentials/prod.py", "src/secrets/runtime.ts",
@@ -1757,6 +1966,46 @@ class AutoreviewHardeningTests(unittest.TestCase):
             ".docker/Dockerfile", ".config/gcloud/client.py", "tokens/session.json",
             "src/auth-token.json", "src/.env", "src/.netrc", "src/.git-credentials",
             "keys/id_ed25519", "keys/signing.pem", "keys/signing.p12", "keys/signing.key",
+            "docs/flows/credential-source-egress/session.json",
+            "docs/flows/credential-source-egress/credentials.md",
+            "docs/flows/credential-source-egress/.env",
+            "docs/flows/credential-source-egress/signing.key",
+            "docs/flows/credential-source-egress/nested/model-requests.md",
+            "docs/flows/credentials/model-requests.md",
+            "private/docs/flows/credential-source-egress/model-requests.md",
+            "docs/Flows/credential-source-egress/model-requests.md",
+            "docs/reference/repository-credentials/session.json",
+            "docs/reference/repository-credentials/credentials.md",
+            "docs/reference/repository-credentials/.env",
+            "docs/reference/repository-credentials/signing.key",
+            "docs/reference/repository-credentials/nested/guide.md",
+            "docs/reference/credentials/guide.md",
+            "private/docs/reference/repository-credentials/guide.md",
+            "docs/Reference/repository-credentials/guide.md",
+            "docs/reference/credential-sources/session.json",
+            "docs/reference/credential-sources/credentials.md",
+            "docs/reference/credential-sources/.env",
+            "docs/reference/credential-sources/signing.key",
+            "docs/reference/credential-sources/nested/guide.md",
+            "docs/reference/credential-sources/guide.MD",
+            "private/docs/reference/credential-sources/guide.md",
+            "specs/rfcs/0023-egress-proxy-credential-lifecycle/session.json",
+            "specs/rfcs/0023-egress-proxy-credential-lifecycle/credentials.md",
+            "specs/rfcs/0023-egress-proxy-credential-lifecycle/.env",
+            "specs/rfcs/0023-egress-proxy-credential-lifecycle/signing.key",
+            "specs/rfcs/0023-egress-proxy-credential-lifecycle/nested/guide.md",
+            "specs/rfcs/0023-egress-proxy-credential-lifecycle/guide.MD",
+            "private/specs/rfcs/0023-egress-proxy-credential-lifecycle/guide.md",
+            "docs/Reference/credential-sources/guide.md",
+            "specs/RFCs/0023-egress-proxy-credential-lifecycle/guide.md",
+            "specs/rfcs/credentials/guide.md",
+            "specs/rfcs/0024-egress-proxy-credential-lifecycle/guide.md",
+            "drivers/repository-credentials/session.json",
+            "drivers/repository-credentials/.env",
+            "drivers/repository-credentials/signing.pem",
+            ".ssh/credential-proxy/index.ts",
+            "private/credential-proxy/index.ts",
+            ".aws/skills/credential-proxy/SKILL.md",
         )
         cases = [("--source-context", path) for path in paths]
         cases.append(("--source-context-file", "credentials/prod.py"))
@@ -2505,7 +2754,7 @@ class AutoreviewHardeningTests(unittest.TestCase):
             path.write_text("TOKEN=changed-placeholder\n", encoding="utf-8")
             git(repo, "add", path.name)
 
-            bundle, _paths, _mixed, _spans, _commit, _images, _base = self.helper["local_bundle"](repo)
+            bundle = self.helper["local_bundle"](repo).text
 
             self.assertIn(self.helper["REVIEW_SECURITY_OMISSION"], bundle)
 
@@ -2523,7 +2772,7 @@ class AutoreviewHardeningTests(unittest.TestCase):
                 path.write_text("placeholder=true\n", encoding="utf-8")
                 (repo / "review.py").write_text("print('review me')\n", encoding="utf-8")
 
-                bundle, _paths, _mixed, _spans, _commit, _images, _base = self.helper["local_bundle"](repo)
+                bundle = self.helper["local_bundle"](repo).text
 
                 self.assertIn("# Review Input Omissions", bundle)
                 self.assertIn(self.helper["REVIEW_SECURITY_OMISSION"], bundle)
@@ -2570,7 +2819,7 @@ class AutoreviewHardeningTests(unittest.TestCase):
                 self.helper["local_bundle"].__globals__,
                 {"read_file_bytes": read_once},
             ):
-                bundle, _paths, _mixed, _spans, _commit, _images, _base = self.helper["local_bundle"](repo)
+                bundle = self.helper["local_bundle"](repo).text
 
             expected_record = json.dumps("review me" + os.linesep)
             self.assertIn(
@@ -2999,7 +3248,7 @@ class AutoreviewHardeningTests(unittest.TestCase):
             snapshot = self.helper["source_tree_snapshot"](repo)
             git(repo, "update-ref", "refs/heads/review-base", "HEAD")
             self.assertEqual(self.helper["source_tree_snapshot"](repo), snapshot)
-            bundle, _paths, _mixed, _spans, _commit, _images, _base = self.helper["local_bundle"](repo, pinned)
+            bundle = self.helper["local_bundle"](repo, pinned).text
             self.assertIn("+committed task change", bundle)
             self.assertEqual(
                 self.helper["build_bundle"](repo, target, pinned, "HEAD").paths,
@@ -3021,7 +3270,7 @@ class AutoreviewHardeningTests(unittest.TestCase):
                 if staged:
                     git(repo, "add", safe)
                 with self.subTest(staged=staged):
-                    bundle, _paths, _mixed, _spans, _commit, _images, _base = self.helper["local_bundle"](repo)
+                    bundle = self.helper["local_bundle"](repo).text
                     self.assertIn("struct CredentialFile", bundle)
                     self.assertIn(safe, self.helper["local_bundle"](repo).paths)
                     for label in ("--dataset", "--prompt-file"):
@@ -3697,6 +3946,181 @@ class AutoreviewHardeningTests(unittest.TestCase):
                         self.assertNotIn("\x1b", result.stderr)
 
 
+    @unittest.skipUnless(os.name == "posix", "signals and process groups require POSIX")
+    def test_cli_interruption_publishes_no_verdict_after_child_cleanup(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            repo = init_repo(root)
+            git(repo, "commit", "-q", "--allow-empty", "-m", "base")
+            (repo / "source.txt").write_text("review me\n")
+            ready = root / "ready"
+            executable = write_executable(root / "codex", f'''#!/usr/bin/env python3
+import os
+from pathlib import Path
+import sys
+import time
+if "--version" in sys.argv:
+    print("codex-cli 0.0.0-test")
+    raise SystemExit(0)
+if "login" in sys.argv:
+    raise SystemExit(1)
+sys.stdin.read()
+ready = Path({str(ready)!r})
+ready.with_suffix(".tmp").write_text(str(os.getpid()))
+ready.with_suffix(".tmp").replace(ready)
+time.sleep(60)
+''')
+            # Empty homes and an inert CLI keep this process test offline and unauthenticated.
+            env = {"PATH": os.environ.get("PATH", os.defpath), "HOME": str(root),
+                   "USERPROFILE": str(root), "CODEX_HOME": str(root),
+                   # Without OS temp settings, macOS Python chooses shared /tmp
+                   # and isolation refuses startup before this test can signal it.
+                   "TMPDIR": str(root)}
+            if "AUTOREVIEW_GIT" in os.environ:
+                env["AUTOREVIEW_GIT"] = os.environ["AUTOREVIEW_GIT"]
+            cases = ((signal.SIGTERM, True, None), (signal.SIGINT, True, None),
+                     (signal.SIGTERM, False, None), (signal.SIGTERM, False, "stderr"),
+                     (signal.SIGTERM, True, "stdout"), (signal.SIGTERM, False, "both"))
+            for signum, writable, closed in cases:
+                with self.subTest(signum=signum, writable=writable, closed=closed):
+                    ready.unlink(missing_ok=True)
+                    destination = root / f"status-{signum}-{writable}-{closed}"
+                    destination.mkdir()
+                    sidecar = destination / "status.json"
+                    report, human = root / "result.json", root / "result.txt"
+                    argv = [sys.executable, str(SCRIPT), "--mode", "local", "--engine", "codex",
+                            "--codex-bin", str(executable), "--codex-no-fallback", "--no-web-search",
+                            "--status-output", str(sidecar), "--json-output", str(report),
+                            "--output", str(human)]
+                    with subprocess.Popen(argv, cwd=repo, env=env, text=True,
+                                          stdout=subprocess.PIPE, stderr=subprocess.PIPE) as proc:
+                        try:
+                            deadline = time.monotonic() + 20
+                            while not ready.exists() and proc.poll() is None and time.monotonic() < deadline:
+                                time.sleep(0.01)
+                            self.assertTrue(ready.exists(), "inert reviewer did not start")
+                            child_pid = int(ready.read_text())
+                            if not writable:
+                                destination.rmdir()  # Simulate storage lost after output preflight.
+                            # Cancellation can also close the observer's diagnostic pipes.
+                            for name in ("stdout", "stderr"):
+                                if closed in (name, "both"):
+                                    getattr(proc, name).close()
+                                    setattr(proc, name, None)
+                            # Signal only the helper: its existing handler must stop the owned child.
+                            proc.send_signal(signum)
+                            stdout, stderr = proc.communicate(timeout=10)
+                            self.assertEqual(proc.returncode, 128 + signum, (stdout or "") + (stderr or ""))
+                            with self.assertRaises(ProcessLookupError):
+                                os.killpg(child_pid, 0)
+                            self.assertFalse(report.exists())
+                            self.assertFalse(human.exists())
+                            if not writable:
+                                self.assertFalse(sidecar.exists())
+                                if closed not in ("stderr", "both"):
+                                    self.assertIn("interrupted status could not be written", stderr)
+                                continue
+                            outcome = json.loads(sidecar.read_text())
+                            self.assertEqual(outcome["status"], "interrupted")
+                            self.assertEqual(outcome["reason"], "interrupted")
+                            self.assertEqual(outcome["exit_code"], 128 + signum)
+                            self.assertEqual(outcome["signal_number"], signum)
+                            self.assertFalse(outcome["report_produced"])
+                            self.assertFalse(outcome["timed_out"])
+                            self.assertIsNone(outcome["reviewer_exit_code"])
+                        finally:
+                            if proc.poll() is None:
+                                proc.terminate()
+                                proc.communicate(timeout=10)
+
+    @unittest.skipUnless(os.name == "posix", "closed pipe requires POSIX")
+    def test_output_finalization_preserves_normal_run_io_errors(self) -> None:
+        for code in (0, 1, 2, 143):
+            with self.subTest(code=code):
+                reader, writer = os.pipe()
+                os.close(reader)
+                stream = os.fdopen(writer, "w")
+                def pending_output():
+                    print("pending diagnostic", end="")
+                    return code
+                try:
+                    # Exercise real finalization against a closed pipe; only the
+                    # main result is supplied so ordinary exits stay observable.
+                    with mock.patch.dict(self.helper["sanitized_main"].__globals__,
+                                         {"main": pending_output}), \
+                            contextlib.redirect_stdout(stream), contextlib.redirect_stderr(io.StringIO()):
+                        if code == 143:
+                            self.assertEqual(self.helper["sanitized_main"](), code)
+                            stream.flush()  # Interpreter shutdown must not fail again.
+                        else:
+                            with self.assertRaises(BrokenPipeError):
+                                self.helper["sanitized_main"]()
+                finally:
+                    with contextlib.suppress(OSError):
+                        stream.close()
+
+    @unittest.skipIf(os.name == "nt", "the executable fixture is POSIX-only")
+    def test_cli_codex_model_fallback_opt_out_preserves_failed_terminal(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            repo = init_repo(root)
+            git(repo, "commit", "-q", "--allow-empty", "-m", "base")
+            (repo / "source.txt").write_text("review me\n")
+            env = {key: value for key, value in os.environ.items()
+                   if not key.startswith("AUTOREVIEW_") or key == "AUTOREVIEW_GIT"}
+            env.update({"HOME": str(root), "USERPROFILE": str(root), "CODEX_HOME": str(root),
+                        "AUTOREVIEW_FAKE_RECORD": str(root / "record.json")})
+            for primary, fallback in (("gpt-6.1-sol", "gpt-6-sol"), ("gpt-6-sol", "gpt-6-luna"), ("gpt-5.6-sol", "gpt-5.6-terra")):
+                # Even a schema-valid output file cannot override the failing child exit.
+                failure = (
+                    'model = args[args.index("--model") + 1]\n'
+                    f'if model == {primary!r}:\n'
+                    '    print(json.dumps({"type": "error", "message": '
+                    'f"The model {model} does not exist or you do not have access to it."}))\n'
+                    '    raise SystemExit(17)\n'
+                )
+                executable = write_executable(root / "codex", fake_codex_script().replace(
+                    'print("fake codex ok")', failure + 'print("fake codex ok")',
+                ))
+                for disabled in (True, False):
+                    with self.subTest(primary=primary, disabled=disabled):
+                        outputs = root / f"{primary}-{disabled}"
+                        outputs.mkdir()
+                        invocations = outputs / "invocations.jsonl"
+                        sidecar, report = outputs / "status.json", outputs / "result.json"
+                        env["AUTOREVIEW_FAKE_CODEX_INVOCATIONS"] = str(invocations)
+                        argv = [sys.executable, str(SCRIPT), "--mode", "local", "--engine", "codex",
+                                "--model", primary, "--no-web-search", "--codex-bin", str(executable),
+                                "--status-output", str(sidecar), "--json-output", str(report)]
+                        if disabled:
+                            argv.append("--codex-no-fallback")
+                        planned = subprocess.run(argv + ["--dry-run"], cwd=repo, env=env, text=True, capture_output=True, timeout=30)
+                        self.assertEqual(planned.returncode, 0, planned.stdout + planned.stderr)
+                        policy = "codex_fallback: disabled (model and authentication route)"
+                        self.assertEqual(policy in planned.stdout, disabled)
+                        self.assertEqual(f"fallback_model: {fallback}" in planned.stdout, not disabled)
+                        self.assertFalse(report.exists())
+                        result = subprocess.run(argv, cwd=repo, env=env, text=True, capture_output=True, timeout=30)
+                        self.assertEqual(result.returncode, 1 if disabled else 0, result.stdout + result.stderr)
+                        self.assertEqual(policy in result.stdout, disabled)
+                        self.assertEqual(f"fallback_model: {fallback}" in result.stdout, not disabled)
+                        attempts = [json.loads(line)["argv"] for line in invocations.read_text().splitlines()]
+                        models = [args[args.index("--model") + 1] for args in attempts if "exec" in args]
+                        self.assertEqual(models, [primary] if disabled else [primary, fallback])
+                        outcome = json.loads(sidecar.read_text())
+                        self.assertEqual(outcome["status"], "reviewer_unavailable" if disabled else "scoped-clean")
+                        self.assertEqual(outcome["report_produced"], not disabled)
+                        if disabled:
+                            self.assertEqual(outcome["reason"], "engine_failed")
+                            self.assertEqual(outcome["reviewer_exit_code"], 17)
+                            self.assertFalse(outcome["timed_out"])
+                            self.assertFalse(report.exists())
+                            self.assertNotIn("scoped-clean:", result.stdout)
+                            self.assertNotIn("retrying with", result.stderr)
+                        else:
+                            self.assertEqual(json.loads(report.read_text())["findings"], [])
+                            self.assertIn(f"retrying with {fallback}", result.stderr)
+
     def test_tracked_binary_changes_are_blocked_in_all_modes(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             repo = init_repo(Path(tempdir))
@@ -3767,6 +4191,8 @@ class AutoreviewHardeningTests(unittest.TestCase):
             'model_instructions_file="/tmp/hostile.md"',
             'model_providers.review_api.auth.command="/tmp/credential-sink"',
             'hooks.PreToolUse.command="touch /tmp/owned"',
+            'app_server.listen="0.0.0.0:9000"',
+            'app_server.max_input_text_chars.extra=1',
         ):
             with self.subTest(override=override), self.assertRaisesRegex(
                 SystemExit,
@@ -3789,6 +4215,47 @@ class AutoreviewHardeningTests(unittest.TestCase):
             self.helper["codex_config_overrides"](args),
             args.codex_config,
         )
+
+    def test_codex_input_text_limit_is_forwarded_as_bounded_startup_config(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for value, expected in (
+                ("1", "1"), ("1048576", "1048576"), ("3145728", "3145728"),
+                ("4194304", "4194304"), (" 3145728 ", "3145728"),
+                ("\u00a03145728\u00a0", "3145728"), ("\n3145728\n", "3145728"),
+            ):
+                override = f"app_server.max_input_text_chars={value}"
+                canonical = f"app_server.max_input_text_chars={expected}"
+                for source in ("argument", "environment"):
+                    with self.subTest(value=value, source=source), mock.patch.dict(
+                        os.environ, {"AUTOREVIEW_CODEX_CONFIG": override}, clear=True,
+                    ):
+                        args = argparse.Namespace(
+                            codex_bin=sys.executable, web_search=False, thinking=None,
+                            codex_speed="default", codex_config=[override] if source == "argument" else [],
+                        )
+                        command = self.helper["codex_command"](
+                            args, root, root, root, root / "schema.json", root / "output.json",
+                            "fixture-model", auth_config=[],
+                        )
+                        self.assertIn(canonical, command)
+                        index = command.index(canonical)
+                        self.assertEqual(command[index - 1], "-c")
+                        self.assertLess(index, command.index("exec"))
+                        self.assertEqual(command.count(canonical), 1)
+
+    def test_codex_input_text_limit_rejects_invalid_values_from_both_inputs(self) -> None:
+        for value in ("0", "-1", "+1", "01", "4194305", "1.5", "1e6", '"3145728"',
+                      "true", "0x100000", "3_145_728", "١", "9" * 5000,
+                      "3145728\nnotify=['untrusted']"):
+            override = f"app_server.max_input_text_chars={value}"
+            for source in ("argument", "environment"):
+                with self.subTest(value=value[:40], source=source), mock.patch.dict(
+                    os.environ, {"AUTOREVIEW_CODEX_CONFIG": override}, clear=True,
+                ), self.assertRaisesRegex(SystemExit, "integer from 1 to 4194304"):
+                    self.helper["codex_config_overrides"](argparse.Namespace(
+                        codex_config=[override] if source == "argument" else [],
+                    ))
 
     def test_codex_speed_override_accepts_ultrafast(self) -> None:
         override = self.helper["codex_speed_override"]
@@ -4738,25 +5205,17 @@ class AutoreviewHardeningTests(unittest.TestCase):
                     expected = expected[:9]
                 self.assertEqual(events, expected)
 
-    def test_review_patch_does_not_disclose_controls_in_omitted_paths(self) -> None:
+    def test_review_patch_does_not_disclose_controls_in_refused_paths(self) -> None:
         path = ".env.\x1b]52;c;VEVTVA==\x07\udc9b"
+        with self.assertRaises(SystemExit) as refusal:
+            self.helper["validate_review_patch"]([path], "")
+        message = str(refusal.exception)
+        self.assertEqual(message, "cannot establish sensitive patch ownership")
+        self.assertNotIn("\x1b", message)
+        self.assertNotIn("\x07", message)
+        self.assertNotIn("\udc9b", message)
 
-        redacted = self.helper["validate_review_patch"](
-            [path],
-            "",
-        )
-
-        self.assertEqual(
-            redacted,
-            self.helper["REVIEW_SECURITY_OMISSION"] + "\n",
-        )
-        self.assertNotIn("\x1b", redacted)
-        self.assertNotIn("\x07", redacted)
-        self.assertNotIn("\udc9b", redacted)
-
-    def test_review_patch_omits_everything_when_sensitive_paths_cannot_be_mapped(
-        self,
-    ) -> None:
+    def test_review_patch_refuses_unmapped_sensitive_paths(self) -> None:
         patch = (
             "commit metadata that must not survive a mapping failure\n"
             "diff --cc .env\n"
@@ -4764,17 +5223,8 @@ class AutoreviewHardeningTests(unittest.TestCase):
             "++placeholder=true\n"
         )
 
-        redacted = self.helper["validate_review_patch"](
-            [".env"],
-            patch,
-        )
-
-        self.assertEqual(
-            redacted,
-            self.helper["REVIEW_SECURITY_OMISSION"] + "\n",
-        )
-        self.assertNotIn("placeholder", redacted)
-        self.assertNotIn("commit metadata", redacted)
+        with self.assertRaisesRegex(SystemExit, "cannot establish sensitive patch ownership"):
+            self.helper["validate_review_patch"]([".env"], patch)
 
     def test_review_patch_preserves_combined_and_headerless_hunk_content(self) -> None:
         credential_shaped_code = '+token = "ordinary-hardcoded-value-12345"\n'
@@ -4802,21 +5252,122 @@ class AutoreviewHardeningTests(unittest.TestCase):
             (repo / ".env").write_text("placeholder=true\n", encoding="utf-8")
             (repo / "base.txt").write_text("base\nreview me\n", encoding="utf-8")
             git(repo, "add", ".env", "base.txt")
-            local, _paths, _mixed, _spans, _commit, _images, _base = self.helper["local_bundle"](repo)
+            local = self.helper["local_bundle"](repo).text
             self.assertIn(self.helper["REVIEW_SECURITY_OMISSION"], local)
             self.assertNotIn(".env", local)
             self.assertNotIn("placeholder=true", local)
             self.assertIn("+review me", local)
 
             git(repo, "commit", "-q", "-m", "sensitive path")
-            for bundle, paths, _mixed, _spans, _commit, _images, _base in (
+            for captured in (
                 self.helper["branch_bundle"](repo, base),
                 self.helper["commit_bundle"](repo, "HEAD"),
             ):
+                bundle = captured.text
                 self.assertIn(self.helper["REVIEW_SECURITY_OMISSION"], bundle)
                 self.assertNotIn(".env", bundle)
                 self.assertNotIn("placeholder=true", bundle)
                 self.assertIn("+review me", bundle)
+
+    def test_credential_flow_changes_remain_finding_targets(self) -> None:
+        paths = ("docs/flows/credential-source-egress/model-requests.md",
+                 "docs/reference/repository-credentials/prepared-native-git.md",
+                 "docs/reference/credential-sources/protected-inference.md",
+                 "specs/rfcs/0023-egress-proxy-credential-lifecycle/github-installation-access.md",
+                 "specs/rfcs/0023-egress-proxy-credential-lifecycle/index.md")
+        for path in paths:
+            with self.subTest(path=path), tempfile.TemporaryDirectory() as tempdir:
+                repo = init_repo(Path(tempdir))
+                (repo / "base.txt").write_text("base\n")
+                git(repo, "add", "base.txt")
+                git(repo, "commit", "-qm", "base")
+                base = git(repo, "rev-parse", "HEAD").strip()
+                doc = repo / path
+                doc.parent.mkdir(parents=True)
+                doc.write_text("# Model request flow\n")
+                # The exception is for tracked behavior docs, not arbitrary evidence.
+                untracked = self.helper["local_bundle"](repo)
+                self.assertNotIn("Model request flow", untracked.text)
+                self.assertNotIn(path, untracked.paths)
+                git(repo, "add", path)
+                staged = self.helper["local_bundle"](repo)
+                self.assertIn("+# Model request flow", staged.text)
+                self.assertIn(path, staged.paths)
+                git(repo, "commit", "-qm", "document flow")
+                for bundle in (self.helper["branch_bundle"](repo, base),
+                               self.helper["commit_bundle"](repo, "HEAD")):
+                    self.assertIn(path, bundle.text)
+                    self.assertIn("+# Model request flow", bundle.text)
+                    self.assertIn(path, bundle.paths)
+
+    def test_credential_flow_exception_requires_regular_changed_modes(self) -> None:
+        paths = ("docs/flows/credential-source-egress/guide.md",
+                 "docs/reference/repository-credentials/guide.md",
+                 "docs/reference/credential-sources/guide.md",
+                 "specs/rfcs/0023-egress-proxy-credential-lifecycle/guide.md")
+        url = "https://example.invalid/private-flow-repository.git"
+        for path, (old_mode, new_mode, allowed) in itertools.product(paths, (
+            ("160000", "160000", False), ("120000", "120000", False),
+            ("000000", "160000", False), ("000000", "120000", False),
+            ("100644", "160000", False), ("160000", "100644", False),
+            ("100644", "120000", False), ("120000", "100644", False),
+            ("160000", "000000", False), ("120000", "000000", False),
+            ("100644", "000000", True), ("100644", "100755", True),
+        )):
+            with self.subTest(path=path, old_mode=old_mode, new_mode=new_mode), tempfile.TemporaryDirectory() as tempdir:
+                repo = init_repo(Path(tempdir))
+                git(repo, "config", "core.filemode", "false")
+                if os.name == "nt":
+                    git(repo, "config", "core.symlinks", "false")
+                (repo / "base.txt").write_text("base\n")
+                git(repo, "add", "base.txt")
+                git(repo, "commit", "-qm", "first pin")
+                first = git(repo, "rev-parse", "HEAD").strip()
+                git(repo, "commit", "--allow-empty", "-qm", "second pin")
+                second = git(repo, "rev-parse", "HEAD").strip()
+                (repo / ".gitmodules").write_text(
+                    f'[submodule "flow"]\npath = {path}\nurl = {url}\n'
+                )
+                git(repo, "add", ".gitmodules")
+
+                def select(mode, pin, text):
+                    target = repo / path
+                    if target.is_symlink() or target.is_file():
+                        target.unlink()
+                    elif target.is_dir():
+                        target.rmdir()
+                    if mode == "000000":
+                        git(repo, "update-index", "--force-remove", path)
+                        return
+                    payload = repo.parent / "payload"
+                    payload.write_text(text)
+                    oid = pin if mode == "160000" else git(repo, "hash-object", "-w", str(payload)).strip()
+                    git(repo, "update-index", "--add", "--cacheinfo", f"{mode},{oid},{path}")
+                    if mode == "160000":
+                        target.mkdir(parents=True)
+                    else:
+                        git(repo, "checkout-index", "--force", "--", path)
+
+                select(old_mode, first, "original-flow-marker\n")
+                git(repo, "commit", "-qm", "baseline mapping")
+                base = git(repo, "rev-parse", "HEAD").strip()
+                select(new_mode, second, "updated-flow-marker\n")
+                (repo / "base.txt").write_text("base\npermitted-sibling-edit\n")
+                git(repo, "add", "base.txt")
+                local = self.helper["local_bundle"](repo)
+                git(repo, "commit", "-qm", "change flow object")
+                for bundle in (local, self.helper["branch_bundle"](repo, base),
+                               self.helper["commit_bundle"](repo, "HEAD")):
+                    # Filtering either section of a type change must retain its sibling.
+                    self.assertIn("base.txt", bundle.paths)
+                    self.assertIn("+permitted-sibling-edit", bundle.text)
+                    # An unchanged mapping must never be disclosed by a rejected gitlink.
+                    self.assertNotIn(url, bundle.text)
+                    self.assertEqual(path in bundle.paths, allowed)
+                    self.assertEqual("original-flow-marker" in bundle.text, allowed)
+                    if not allowed:
+                        self.assertNotIn("updated-flow-marker", bundle.text)
+                        self.assertNotIn(path, bundle.text)
 
     def test_secret_named_workflows_are_reviewable_in_all_modes(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
@@ -4829,16 +5380,16 @@ class AutoreviewHardeningTests(unittest.TestCase):
             workflow = repo / ".github" / "workflows" / "secret-scan.yml"
             workflow.parent.mkdir(parents=True)
             workflow.write_text("name: Secret scan\n", encoding="utf-8")
-            untracked_bundle, _paths, _mixed, _spans, _commit, _images, _base = self.helper["local_bundle"](repo)
+            untracked_bundle = self.helper["local_bundle"](repo).text
             self.assertIn("secret-scan.yml", untracked_bundle)
 
             git(repo, "add", str(workflow.relative_to(repo)))
-            tracked_bundle, _paths, _mixed, _spans, _commit, _images, _base = self.helper["local_bundle"](repo)
+            tracked_bundle = self.helper["local_bundle"](repo).text
             self.assertIn("secret-scan.yml", tracked_bundle)
 
             git(repo, "commit", "-q", "-m", "add secret scanner")
-            branch_bundle, _paths, _mixed, _spans, _commit, _images, _base = self.helper["branch_bundle"](repo, base)
-            commit_bundle, _paths, _mixed, _spans, _commit, _images, _base = self.helper["commit_bundle"](repo, "HEAD")
+            branch_bundle = self.helper["branch_bundle"](repo, base).text
+            commit_bundle = self.helper["commit_bundle"](repo, "HEAD").text
             self.assertIn("secret-scan.yml", branch_bundle)
             self.assertIn("secret-scan.yml", commit_bundle)
 
@@ -4906,7 +5457,7 @@ class AutoreviewHardeningTests(unittest.TestCase):
             path.parent.mkdir()
             path.write_text(source, encoding="utf-8")
 
-            bundle, _paths, _mixed, _spans, _commit, _images, _base = self.helper["local_bundle"](repo)
+            bundle = self.helper["local_bundle"](repo).text
 
             self.assertIn("ordinary-hardcoded-value-12345", bundle)
 
@@ -5178,7 +5729,7 @@ class AutoreviewHardeningTests(unittest.TestCase):
             git(repo, "add", "-u")
             git(repo, "commit", "-q", "-m", "delete template")
 
-            bundle, _paths, _mixed, _spans, _commit, _images, _base = self.helper["branch_bundle"](repo, base)
+            bundle = self.helper["branch_bundle"](repo, base).text
 
             self.assertIn("deleted file mode 100644", bundle)
             self.assertIn("------BEGIN [A-Z ]+-----", bundle)
@@ -5338,7 +5889,7 @@ class AutoreviewHardeningTests(unittest.TestCase):
 
             path.write_text('const request = { token: String() };\n', encoding="utf-8")
 
-            bundle, _paths, _mixed, _spans, _commit, _images, _base = self.helper["local_bundle"](repo)
+            bundle = self.helper["local_bundle"](repo).text
 
             self.assertIn('-const request = { token: "test-token" };', bundle)
 
@@ -8040,6 +8591,7 @@ os.execv(target, [str(target), *sys.argv[1:]])
                 prompt=[],
                 prompt_file=[],
                 dataset=[],
+                max_prompt_bytes=self.helper["MAX_REVIEW_PROMPT_BYTES"],
                 max_priority="P0",
             )
             stdout = io.StringIO()

@@ -22,6 +22,19 @@ produces no helper-validated machine status or helper isolation guarantees.
 - Codex tier: Ultrafast when active model catalog lists it; otherwise Codex silently
   sends standard tier. Raw `--codex-config service_tier=...` keeps its value.
 - `--codex-speed fast`: priority service. `--codex-speed default`: standard tier.
+- `--codex-no-fallback`: keep the selected Codex model and initial authentication
+  route. Disables all helper model retries and configured-provider rerouting,
+  including the missing-login shortcut before the first attempt. An explicit
+  initial provider remains selected; otherwise retain subscription authentication.
+  Failure remains `reviewer_unavailable` with no validated report. Codex-only and
+  opt-in; defaults, native recovery within the same provider, and the per-attempt
+  deadline remain unchanged. This flag does not grant model or account access.
+- `--codex-config app_server.max_input_text_chars=3145728` sets a startup
+  text-input character limit only when the selected CLI supports that setting.
+  Accepts decimal digits from `1` to `4194304`; omission preserves the selected
+  CLI's default.
+  This does not change the model context window or output budget. Other
+  `app_server` settings remain unsupported.
 - Only Claude accepts `--fallback-model`.
 - Per-engine environment overrides: `AUTOREVIEW_<ENGINE>_*`.
 
@@ -90,6 +103,58 @@ Profile settings remain ignored. Force configured route before subscription atte
 - Dry runs: same ownership/route shape checks; no authentication execution.
 - Codex owns catalogue validation, model access, context clamping.
 - Projection selected: other custom provider forms/split context overrides unsupported.
+
+## API hostname selection
+
+```bash
+"$AUTOREVIEW" --mode local --codex-route api.example.com
+"$AUTOREVIEW" --mode branch --base origin/main --codex-route api.example.com --codex-no-fallback
+```
+
+- Opt-in, Codex-only, POSIX-only. Reads `${CODEX_HOME:-~/.codex}/config.toml`,
+  never repository configuration or profiles. Configuration and its directory
+  must be user-owned, external to the reviewed repository, with no group/world
+  writable ancestry (root-owned sticky temporary ancestors are allowed).
+  Repository-owned symlink provenance and multiply linked config files are refused.
+  Requires Python 3.11 or `tomli`. Windows hostname selection fails closed because
+  this ownership check does not attest Windows ACLs; existing routes are unchanged.
+- Selects from all top-level named provider definitions, independently of the
+  active `model_provider`. Exactly one definition must match. Case, IDNA DNS names
+  and one trailing DNS root dot normalize; lossy IDNA2003 mappings are refused
+  rather than conflated with another hostname. IP literals normalize by address.
+  No wildcard/suffix matching. Supply only a host, without URL, port, path or
+  userinfo; IPv6 uses a bare address. Multiple definitions on the same host are
+  ambiguous even with different ports or paths. Malformed/missing matches fail.
+- Refuses repeated `--codex-route` and any `model_provider` override, including
+  `AUTOREVIEW_CODEX_CONFIG`, even if it names the same provider. Tuning overrides
+  remain available, except context-window/compaction overrides that split the
+  configured route. Profile and top-level base URL overrides remain unsupported.
+- Preserves the selected full HTTPS base URL, including port/path/escaping,
+  Responses protocol, WebSocket and standalone-search support booleans, request
+  and stream retry counts, stream idle timeout, external model catalogue and
+  context settings. The existing URL safety constraints above still apply.
+  Unsupported fields, headers, query parameters, environment auth and OpenAI
+  login auth fail explicitly; settings are never silently dropped.
+- Accepts the existing validated command-auth form or one nonempty
+  `experimental_bearer_token` using bearer-token syntax. `requires_openai_auth`
+  must be false or omitted. Combining auth forms is refused. The existing
+  `--codex-config model_provider=...` contract stays unchanged and does not admit
+  direct bearer tokens.
+- Direct bearer tokens use a temporary mode-`0600` file and an isolated Python
+  reader in the private client runtime, outside reviewer-readable paths. Only
+  native command auth reads the token; it never enters process arguments,
+  environment, prompt bundles or provider flags. Runtime artifacts are removed
+  on normal exit, handled failure and interruption; abrupt process/host death
+  retains the normal temporary-directory cleanup limitation.
+- No subscription/auth.json linkage, keyring policy, inherited API credential or
+  endpoint variables, unrelated tools, hooks, MCP servers or permissions are
+  imported. Provider diagnostics stay suppressed; known bearer values are also
+  redacted from displayed assistant output and final report text.
+- Selection is explicit: failed validation/auth/transport never switches provider,
+  endpoint or credential. Existing model-access retries stay on the same frozen
+  route/token/catalogue snapshot; add `--codex-no-fallback` to disable those too.
+  Dry-run performs selection and ownership checks without staging or executing
+  authentication. Omitting the new option preserves existing behavior.
 
 | Optional engine | Prerequisites                                                                                         |
 | --------------- | ----------------------------------------------------------------------------------------------------- |
