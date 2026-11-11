@@ -15,6 +15,24 @@ usage() {
     exit 2
 }
 
+host() {
+    : "${FILE_HOST_URL:=$(op read "$op_item/URL")}"
+    : "${FILE_HOST_URL:?FILE_HOST_URL is not set and the 1Password lookup failed}"
+    FILE_HOST_URL=${FILE_HOST_URL%/}
+}
+
+# A link to another server must not collect the token.
+on_host() {
+    host
+    case "$1" in
+        "$FILE_HOST_URL"/*) ;;
+        *)
+            echo "file-host: $1 is not on the file host, so the token was not sent" >&2
+            exit 2
+            ;;
+    esac
+}
+
 request() {
     : "${FILE_HOST_TOKEN:=$(op read "$op_item/password")}"
     : "${FILE_HOST_TOKEN:?FILE_HOST_TOKEN is not set and the 1Password lookup failed}"
@@ -27,17 +45,18 @@ request() {
 case "${1:-}" in
     put)
         if [ $# -ne 2 ] || [ ! -f "$2" ]; then usage; fi
-        : "${FILE_HOST_URL:=$(op read "$op_item/URL")}"
-        : "${FILE_HOST_URL:?FILE_HOST_URL is not set and the 1Password lookup failed}"
+        host
         # A trailing slash makes curl append and encode the file's basename.
-        request --upload-file "$2" "${FILE_HOST_URL%/}/"
+        request --upload-file "$2" "$FILE_HOST_URL/"
         ;;
     replace)
         if [ $# -ne 3 ] || [ ! -f "$2" ]; then usage; fi
+        on_host "$3"
         request --upload-file "$2" "$3"
         ;;
     delete)
         if [ $# -ne 2 ]; then usage; fi
+        on_host "$2"
         request --request DELETE "$2"
         ;;
     *) usage ;;

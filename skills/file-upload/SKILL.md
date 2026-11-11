@@ -16,7 +16,8 @@ Upload the selected file unchanged and return its link so the user can share it 
 ## Run the script
 
 Run `scripts/file-host` from this skill's directory, by its absolute path. It prints the file's URL on stdout and the
-HTTP status on stderr, and exits non-zero on an HTTP error.
+HTTP status on stderr, and exits non-zero on an HTTP error. `replace` and `delete` refuse a URL that is not on the file
+host, so the token never goes to another server.
 
 ```bash
 file-host put /absolute/path/to/recording.mp4
