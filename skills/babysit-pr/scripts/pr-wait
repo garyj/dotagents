@@ -17,6 +17,11 @@ Progress and errors that do not end the run go to stderr.
               the current head, and no review thread is unresolved (default)
   any-change  stop after the first poll that prints an event
 
+A repository may have no CI checks, or none of those review bots. Ten minutes
+after pr-wait first sees a head, a head with no checks counts as green, and
+ready no longer waits for a bot that has shown no sign of itself. The line
+that ends the run says which of the two happened.
+
 Exit codes
   0  the --until condition is met, or the PR merged
   1  the condition cannot be met without action: a required check failed, the
@@ -72,6 +77,10 @@ STATE_DIR = Path.home() / ".local" / "state" / "pr-wait"
 # instead of replaying hours of comments as new events.
 STALE_STATE_SECONDS = 6 * 3600
 MAX_FAILED_POLLS = 10
+# A head with no checks, or no sign of a gating bot, this long after pr-wait
+# first saw it is taken to have none. Without the limit, green and ready never
+# arrive in a repository that lacks CI or a review bot.
+SETTLE_SECONDS = 600
 TRANSIENT = re.compile(
     r"HTTP (5\d\d|429)|rate limit|timed? ?out|connection (reset|refused)|EOF|"
     r"temporar|could not resolve host|TLS handshake|Something went wrong",
@@ -360,6 +369,11 @@ class Watcher:
         checks = self.fetch_checks()
         head = pr["headRefOid"]
         short = head[:7]
+        first = self.state.get("head_seen") or {}
+        if first.get("oid") != head:
+            first = self.state["head_seen"] = {"oid": head, "at": time.time()}
+        settled = time.time() - first["at"] >= SETTLE_SECONDS
+        waited = f"after {SETTLE_SECONDS // 60} min" if settled else "yet"
         mine = {who(pr)[0], pr["viewer"]}
         comments = pr["comments"]["nodes"]
         reviews = pr["reviews"]["nodes"]
@@ -389,7 +403,7 @@ class Watcher:
                 link = checks[name]["link"]
                 fail_lines.append(f"{label} failed: {name} {link}")
                 self.emit(f"fail:{head}:{name}:{link}", fail_lines[-1])
-        gate_done = bool(gate) and all(bucket(n) != "pending" for n in gate)
+        gate_done = all(bucket(n) != "pending" for n in gate) if gate else settled
         all_done = gate_done and all(c["bucket"] != "pending" for c in watched.values())
         # Checks appear a few seconds after a push. Two identical polls in a row
         # guard against calling a half-registered set of checks finished.
@@ -493,12 +507,13 @@ class Watcher:
         failed_names = sorted(name for name, c in watched.items() if c["bucket"] in FAILED)
         parts = [
             ", ".join(f"{n} {b}" for b, n in sorted(counts.items()))
-            + (f" ({', '.join(failed_names)})" if failed_names else ""),
+            + (f" ({', '.join(failed_names)})" if failed_names else "")
+            or f"no checks {waited}",
             f"required {sum(bucket(n) in ('pass', 'skipping') for n in self.required)}/{len(self.required)} green"
             if self.required
             else "",
             ", ".join(bot_status[b] for b in GATING_BOTS + ADVISORY_BOTS if b in bot_status)
-            or "no Copilot, Greptile, or Macroscope yet",
+            or f"no Copilot, Greptile, or Macroscope {waited}",
             f"{len(unresolved)} unresolved threads",
             f"merge state {merge_state}",
         ]
@@ -516,7 +531,7 @@ class Watcher:
                 self.reported.add(checks_key)
                 self.finish(0, [f"green on {short}: {summary}{self.behind(base, base_oid, head)}"])
             # ready waits for Copilot, Greptile, or Macroscope, never for CodeRabbit.
-            if green and reviewed:
+            if green and (reviewed or (settled and not any(b in bot_status for b in GATING_BOTS))):
                 if unresolved:
                     self.finish(1, [f"blocked by {len(unresolved)} unresolved threads on {short}: {' '.join(unresolved)}"])
                 if merge_state == "BEHIND":
