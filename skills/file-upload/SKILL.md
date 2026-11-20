@@ -60,8 +60,8 @@ HTTP 204 means the file is gone and the link now returns 404. HTTP 404 means not
 ## Share the result
 
 - Embed PNG, JPEG, GIF, and WebP images as `![description](URL)`.
-- Link videos as `[Watch recording](URL)`. GitHub does not play externally hosted videos inline, so add a GIF
-  preview where one helps.
+- Link videos as `[Watch recording](URL)`. GitHub does not play externally hosted videos inline, so embed a GIF
+  preview above the link.
 - Link other files as `[Download filename](URL)`.
 - For a self-contained HTML preview, append `?preview=1` to the returned `.html` or `.htm` URL and share
   `[View report](URL?preview=1)`. Verify that URL with HEAD: expect `text/html; charset=utf-8` and an inline
@@ -70,11 +70,11 @@ HTTP 204 means the file is gone and the link now returns 404. HTTP 404 means not
   follow normal browser rules. Include print CSS in reports intended for printing; forms need a receiving service.
 - SVG and other attachment formats still download. The preview option applies only to HTML.
 
-`ffmpeg` is installed. For a clip shorter than about 30 seconds, make a GIF preview, upload it separately, and
-embed it above the full video link:
+`ffmpeg` is installed. For each video, make a GIF preview of its first 15 seconds, upload it separately, and
+embed it above the video link:
 
 ```bash
-ffmpeg -i recording.mp4 -vf "fps=10,scale=800:-1" -loop 0 preview.gif
+ffmpeg -i recording.mp4 -t 15 -vf "fps=10,scale=800:-1" -loop 0 preview.gif
 ```
 
 Links last while the file and hosting remain available.
