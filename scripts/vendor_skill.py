@@ -298,7 +298,7 @@ def sync(
                 note = f"{dt.datetime.now(tz=dt.UTC).date()} PENDING: bumped {data['commit'][:7]} -> {sha[:7]}"
                 if plan.failed_patches:
                     note += ", patches not applied: " + ", ".join(p.name for p in plan.failed_patches)
-                data["vetted"] = [*data.get("vetted", []), note]
+                data["vetted"] = [*data.get("vetted", [])[-1:], note]
             data["commit"] = sha
             write_provenance(name, data)
 

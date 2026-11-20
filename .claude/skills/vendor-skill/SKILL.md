@@ -88,7 +88,8 @@ Run this in a session in this repo when you want to know what upstream did since
 
 `just skills check` reports which upstreams moved a skill's own bytes; unrelated commits in the same repo do not count.
 `just skills sync --latest <name>` takes the new content, applies the patches, and appends a PENDING entry to `vetted`
-naming any patch that no longer applies. Plain `just skills sync` re-copies the pinned commit, healing drift; add
+naming any patch that no longer applies. `vetted` keeps only the previous verdict and the new entry; git history
+holds the rest. Plain `just skills sync` re-copies the pinned commit, healing drift; add
 `--dry-run` to report it and exit non-zero.
 
 ## Removing
