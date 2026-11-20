@@ -7,8 +7,6 @@ description: File a concise pull request. Use when the user asks to file, open, 
 
 If `gh repo view <repo> --json viewerPermission` for the PR's target repo is `READ` or `TRIAGE`, the repo belongs to someone else: show the user the title and description and ask before you push or file.
 
-If a PR for this branch already exists, push and leave its title and description alone, because the user may have edited them. Update only the credit lines.
-
 Commit the changes that belong to this change with the `commit` skill. Leave any other uncommitted changes where they are and name them in your report. Do not stash or commit them.
 
 Never push to the default branch unless the user asks. Before you push, list the branch's commits with `git log origin/<default>..HEAD`. If it lists commits from an unpushed local default branch, rebase them out with `git rebase --onto origin/<default> <default>`.
@@ -23,12 +21,18 @@ Follow the repo's title convention, and say what the change does rather than how
 
 Before you write the description, read `~/.agents/skills/technical-writing/SKILL.md` and `~/.agents/skills/unslop/SKILL.md`.
 
-The user often reads the description after the PR merged without them. Write it so they understand the change in a minute, with these sections:
+The user reads the description before the code, often after the PR merged without them. Write it so they understand the change in a minute, with these sections:
 
 - **Why the change:** one sentence: the problem, and what works after the merge.
 - **Things to note:** first `Door: one-way` or `Door: two-way`, with the reason in a few words. A two-way door is safe to revert. A one-way door is not, such as a data migration, deleted data, or a changed public contract. Then up to 3 bullets the user must not miss, such as a deliberate omission or a surprising decision.
 - **Change outline:** the smallest visual that shows the shape of the change, each next to one short sentence. Use a `diff` block for a call tree, file tree, data shape, or pseudocode that already existed, a plain block for a new one, and Mermaid for flow between parts. Never a file-by-file changelog. Leave this section out when a visual would not make the change easier to understand.
-- **Proof:** one line on how you proved the change. Mention a check only if you ran it. For a visual change, upload a screenshot or a short recording with the `file-upload` skill and embed it here.
+- **Proof:** one line on how you proved the change. Mention a check only if you ran it.
+
+## Screenshots
+
+When the change alters what a user sees, embed screenshots of the running app. Add a before shot if one is easy to get, such as from the default branch. Do not delay the PR to find one. For an interaction, such as a flow across steps, an animation, or a drag, record a short video with the `agent-browser` skill. Upload each file with the `file-upload` skill and embed it as that skill says.
+
+A PR with a visible change and no picture is not ready to file. If you cannot capture the change, say why in Proof. Leave pictures out when nothing a user sees changes, such as tests, refactors, infrastructure, or agent files.
 
 End the description with these lines, in place of any attribution line the harness adds. Use the model names the harness and `autoreview` report. If a model name is unavailable, name the harness without guessing a model.
 
@@ -37,6 +41,6 @@ Created with <model> in <harness>. <Subagent models that wrote part of the chang
 Reviewed with autoreview: <N> rounds with <reviewer model>. Verdict: <final verdict>.
 ```
 
-Keep the verdict line even when the reviewer was not satisfied. When you push more commits to the PR, update the first line. Update the review line only when `autoreview` ran again.
+Keep the verdict line even when the reviewer was not satisfied. When you push more commits to an open PR, rewrite the title and description to match the whole PR. Update the review line only when `autoreview` ran again.
 
 Open a real PR, not a draft, so review bots run. Then watch it with the `babysit-pr` skill.
