@@ -17,7 +17,7 @@ Progress and errors that do not end the run go to stderr.
               the current head, and no review thread is unresolved (default)
   any-change  stop after the first poll that prints an event
 
-A repository may have no CI checks, or none of those review bots. Ten minutes
+A repository may have no CI checks, or none of those review bots. Five minutes
 after pr-wait first sees a head, a head with no checks counts as green, and
 ready no longer waits for a bot that has shown no sign of itself. The line
 that ends the run says which of the two happened.
@@ -80,7 +80,7 @@ MAX_FAILED_POLLS = 10
 # A head with no checks, or no sign of a gating bot, this long after pr-wait
 # first saw it is taken to have none. Without the limit, green and ready never
 # arrive in a repository that lacks CI or a review bot.
-SETTLE_SECONDS = 600
+SETTLE_SECONDS = 300
 TRANSIENT = re.compile(
     r"HTTP (5\d\d|429)|rate limit|timed? ?out|connection (reset|refused)|EOF|"
     r"temporar|could not resolve host|TLS handshake|Something went wrong",
