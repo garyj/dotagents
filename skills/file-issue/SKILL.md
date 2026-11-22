@@ -21,4 +21,6 @@ The body needs:
 - **Out of scope:** nearby things the agent must not change.
 - **Unknown:** open questions marked ❓, including a missing Proof.
 
+When one plan becomes several issues, file the blockers first and start each body with `Blocked by: #n` for every issue that must close before the work can start. If an issue waits on a person, start the body with `Waits on:`, the person, and the decision they owe.
+
 Write the title in the repo's PR title style, because the agent's PR follows it. End the body with `Filed with <model> in <harness> on behalf of <user>.`
