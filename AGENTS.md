@@ -7,9 +7,6 @@ once.
 - A `skills/<name>/.provenance.json` marks a copy of someone else's skill, owned by `scripts/vendor_skill.py` with
   local changes in `.patches/`. Never hand-edit one without capturing the edit as a patch. Read
   `.claude/skills/vendor-skill/SKILL.md` before adding, updating, patching, or removing one.
-- A `.claude/skills/<name>/` with `metadata.github-repo` in its frontmatter comes from `gh skill install`, not from
-  `vendor_skill.py`. `just gh-skills` replaces its files on the next upstream change and drops a local edit without
-  warning.
 - Run `scripts/install` after adding or removing a skill so `~/.claude/skills/` gets or loses its link.
 - Symlinks in `skills/` that point outside the repo belong to chezmoi and are listed in `.git/info/exclude`. Leave
   them alone.
