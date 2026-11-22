@@ -14,7 +14,8 @@ Progress and errors that do not end the run go to stderr.
               the base branch requires none). A skipped required check counts
               as passed only once no other check is pending.
   ready       green, Copilot reviewed the PR or Greptile or Macroscope reviewed
-              the current head, and no review thread is unresolved (default)
+              the current head, no review thread is unresolved, and no
+              person's latest verdict is "changes requested" (default)
   any-change  stop after the first poll that prints an event
 
 A repository may have no CI checks, or none of those review bots. Five minutes
@@ -26,7 +27,8 @@ Exit codes
   0  the --until condition is met, or the PR merged
   1  the condition cannot be met without action: a required check failed, the
      branch conflicts with its base, the PR closed, `ready` is blocked by
-     unresolved threads or a BEHIND branch, or GitHub stayed unreachable
+     unresolved threads, requested changes, or a BEHIND branch, or GitHub
+     stayed unreachable
   2  bad arguments, unknown PR, or another pr-wait already watches this PR
 
 Events
@@ -425,6 +427,15 @@ class Watcher:
             if review["state"] in ("APPROVED", "CHANGES_REQUESTED") or review["body"].strip():
                 state = review["state"].lower().replace("_", " ")
                 self.emit(f"c:{review['id']}", f"review from {login} ({state}): {snippet(review['body'])} {review['url']}")
+        # A person's newest approval or change request is their verdict. A later
+        # comment-only review does not withdraw it, and a dismissal does. A bot's
+        # change request never blocks, because no one can ask a bot to approve.
+        verdicts: dict[str, Json] = {}
+        for review in reviews:
+            login, is_bot = who(review)
+            if not is_bot and review["state"] in ("APPROVED", "CHANGES_REQUESTED", "DISMISSED"):
+                verdicts[login] = review
+        changes = [f"{login} {r['url']}" for login, r in verdicts.items() if r["state"] == "CHANGES_REQUESTED"]
         unresolved: list[str] = []
         for thread in threads:
             nodes = thread["comments"]["nodes"]
@@ -534,6 +545,8 @@ class Watcher:
             if green and (reviewed or (settled and not any(b in bot_status for b in GATING_BOTS))):
                 if unresolved:
                     self.finish(1, [f"blocked by {len(unresolved)} unresolved threads on {short}: {' '.join(unresolved)}"])
+                if changes:
+                    self.finish(1, [f"blocked by changes requested on {short}: {', '.join(changes)}"])
                 if merge_state == "BEHIND":
                     self.finish(1, [behind_line])
                 self.reported.add(checks_key)
