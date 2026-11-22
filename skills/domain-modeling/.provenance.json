@@ -1,0 +1,8 @@
+{
+  "source": "https://github.com/mattpocock/skills",
+  "path": "skills/engineering/domain-modeling",
+  "commit": "abeeaf95660ba9e8b7c753eb38f441ca707a8823",
+  "vetted": [
+    "2026-11-22 read in full with both format files: runs nothing and sends nothing outward. Model-invocable, and it creates GLOSSARY.md and docs/adr/ in the project when a term or decision is settled, so watch for one that nobody asked for. Verdict OK"
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "source": "https://github.com/mattpocock/skills",
+  "path": "skills/productivity/grilling",
+  "commit": "abeeaf95660ba9e8b7c753eb38f441ca707a8823",
+  "vetted": [
+    "2026-11-22 read in full: an interview in rounds, runs nothing and sends nothing outward. It tells the agent to send a sub-agent for facts, which Claude Code, Codex, and OpenCode all have. Model-invocable on purpose, because grill-me and grill-with-docs load it. Verdict OK"
+  ]
+}

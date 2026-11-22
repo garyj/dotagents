@@ -1,0 +1,8 @@
+{
+  "source": "https://github.com/mattpocock/skills",
+  "path": "skills/engineering/grill-with-docs",
+  "commit": "abeeaf95660ba9e8b7c753eb38f441ca707a8823",
+  "vetted": [
+    "2026-11-22 read in full: one line that loads grilling and domain-modeling, both vendored next to it. Says 'Call the Skill tool', which is Claude Code wording, and Codex is untested. Explicit-request-only upstream. Verdict OK"
+  ]
+}
