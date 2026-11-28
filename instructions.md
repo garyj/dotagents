@@ -70,7 +70,7 @@ Auto-memory is off in Claude Code and Codex. Do not save facts anywhere unless I
 
 - **Unslop what you publish.** Before you write a doc, report, issue, or PR body, read `~/.agents/skills/unslop/SKILL.md` and apply it.
 - No "not just X, but Y". No closing offers. No bold labels that restate the line.
-- For everyday replies and explanations, aim for "80% of the way to ASD-STE100 Simplified Technical English": use direct sentences, familiar words, and consistent terms. Give one instruction per sentence. Preserve uncertainty, necessary detail, and natural flow instead of forcing strict word limits or vocabulary.
+- **Match the reply to the question.** A simple or yes/no question gets one to three full sentences, with no headings and no recap. A long reply hides the answer, and I then ask again to get it. Leave out any detail that does not change what I do next. If my question rests on a wrong premise, correct the premise first. Give reasons, alternatives, or future plans when I ask.
 - Use a diagram, table, or interactive explanation when it makes the answer easier to understand. Match the format to the question; keep simple answers in text.
 - **Docs, RFCs, readmes, and PR bodies:** read `~/.agents/skills/technical-writing/SKILL.md` first.
 - No em-dashes (—) anywhere; they read as machine-written.
