@@ -1,8 +1,9 @@
 {
   "source": "https://github.com/mattpocock/skills",
   "path": "skills/engineering/domain-modeling",
-  "commit": "abeeaf95660ba9e8b7c753eb38f441ca707a8823",
+  "commit": "bbadaa631c37af594e5a05c9cefacd9956136b18",
   "vetted": [
-    "2026-11-22 read in full with both format files: runs nothing and sends nothing outward. Model-invocable, and it creates GLOSSARY.md and docs/adr/ in the project when a term or decision is settled, so watch for one that nobody asked for. Verdict OK"
+    "2026-11-22 read in full with both format files: runs nothing and sends nothing outward. Model-invocable, and it creates GLOSSARY.md and docs/adr/ in the project when a term or decision is settled, so watch for one that nobody asked for. Verdict OK",
+    "2026-11-28 read the one-file diff: glossary example plus a rule to bold cross-referenced terms; runs nothing, sends nothing. Verdict OK"
   ]
 }
