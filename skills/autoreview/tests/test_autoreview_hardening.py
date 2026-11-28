@@ -412,11 +412,12 @@ class AutoreviewMixedTargetTests(unittest.TestCase):
 
                     optimize = self.helper["optimize_evidence_plan"]
 
-                    def probe_full_batch(baseline, available, change_bytes, evidence, build):
+                    def probe_full_batch(baseline, available, change_bytes, evidence, build, max_review_passes=None):
                         # Exercise the optimizer's one-batch retry, including a
                         # continuation correction that reduces change capacity.
+                        self.assertIsNone(max_review_passes)
                         self.assertIsNone(build(len(complete.encode()) + 128, len(baseline)))
-                        return optimize(baseline, available, change_bytes, evidence, build)
+                        return optimize(baseline, available, change_bytes, evidence, build, max_review_passes)
 
                     with mock.patch.dict(self.helper["build_review_prompts"].__globals__, {
                         "render_review_prompt": observe_render, "split_review_bundle": bounded_split,
@@ -731,6 +732,17 @@ class AutoreviewMixedTargetTests(unittest.TestCase):
             planned = self.helper["build_review_prompts"](repo, "local", None, captured, "", datasets, 30_000)
             self.assertLessEqual(len(planned), len(legacy))
             self.assertLessEqual(self.helper["review_plan_bytes"](planned), self.helper["review_plan_bytes"](legacy))
+            optimizer = mock.Mock(wraps=self.helper["optimize_evidence_plan"])
+            with mock.patch.dict(self.helper["build_review_prompts"].__globals__, {
+                "optimize_evidence_plan": optimizer,
+            }):
+                bounded = self.helper["build_review_prompts"](
+                    repo, "local", None, captured, "", datasets, 30_000, len(planned),
+                )
+            optimizer.assert_called_once()
+            self.assertEqual(optimizer.call_args.args[-1], len(planned))
+            self.assertLessEqual(len(bounded), len(planned))
+            self.assertEqual(bounded, planned)
 
     def test_file_hunk_long_line_boundaries_and_evidence_batches_keep_authority(self):
         # Force each partition dimension independently of prompt overhead. All
@@ -4917,11 +4929,12 @@ time.sleep(60)
 
                     optimize = self.helper["optimize_evidence_plan"]
 
-                    def probe_full_batch(baseline, available, change_bytes, evidence, build):
+                    def probe_full_batch(baseline, available, change_bytes, evidence, build, max_review_passes=None):
                         # Exercise the optimizer's one-batch retry, including a
                         # continuation correction that reduces change capacity.
+                        self.assertIsNone(max_review_passes)
                         self.assertIsNone(build(len(complete.encode()) + 128, len(baseline)))
-                        return optimize(baseline, available, change_bytes, evidence, build)
+                        return optimize(baseline, available, change_bytes, evidence, build, max_review_passes)
 
                     with mock.patch.dict(self.helper["build_review_prompts"].__globals__, {
                         "render_review_prompt": observe_render, "split_review_bundle": bounded_split,
@@ -7627,6 +7640,37 @@ else:
                 with self.assertRaisesRegex(SystemExit, "invalid file path"):
                     self.helper["validate_report"](outside, repo, {"escape/outside.ts"}, [])
 
+    def test_nonmixed_attribution_is_dropped_instead_of_rejecting_the_finding(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            repo = Path(tempdir)
+            report = {
+                "findings": [{
+                    "title": "Synthetic claim",
+                    "body": "A concrete defect.",
+                    "priority": "P2",
+                    "confidence": 0.8,
+                    "category": "bug",
+                    "code_location": {"file_path": "calc.py", "line": 2},
+                    "source_attribution": {
+                        "target": "working_tree",
+                        "record_id": "not-a-mixed-record",
+                        "source_id": "not-mixed-either",
+                        "side": "present",
+                        "column": 1,
+                        "excerpt": "return a - b",
+                    },
+                }],
+                "overall_correctness": "patch is incorrect",
+                "overall_explanation": "The synthetic defect is real.",
+                "overall_confidence": 0.8,
+            }
+
+            self.helper["validate_report"](report, repo, {"calc.py"}, [], ())
+
+            self.assertEqual(len(report["findings"]), 1)
+            self.assertIsNone(report["findings"][0]["source_attribution"])
+            self.assertNotIn("attribution_rejected_findings", report)
+
     def test_validate_report_normalizes_relative_finding_paths(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             repo = init_repo(Path(tempdir))
@@ -8381,10 +8425,11 @@ os.execv(target, [str(target), *sys.argv[1:]])
                 json.loads(line)
                 for line in invocations.read_text(encoding="utf-8").splitlines()
             ]
-            self.assertEqual(
-                [entry["argv"] for entry in probe_invocations],
-                [["--version"]],
-            )
+            self.assertEqual(probe_invocations[0]["argv"], ["--version"])
+            self.assertEqual(len(probe_invocations), 2 if sys.platform == "linux" else 1)
+            if sys.platform == "linux":
+                self.assertEqual(probe_invocations[1]["argv"][0], "sandbox")
+                self.assertEqual(probe_invocations[1]["argv"][-3:], ["--", str(direct_bin), "--version"])
 
             invocations.unlink()
             review = subprocess.run(
@@ -8410,9 +8455,9 @@ os.execv(target, [str(target), *sys.argv[1:]])
                 json.loads(line)
                 for line in invocations.read_text(encoding="utf-8").splitlines()
             ]
-            self.assertEqual(len(run_invocations), 2)
+            self.assertEqual(len(run_invocations), len(probe_invocations) + 1)
             self.assertEqual(run_invocations[0]["argv"], ["--version"])
-            self.assertIn("exec", run_invocations[1]["argv"])
+            self.assertIn("exec", run_invocations[-1]["argv"])
 
             def normalized_runtime_env(invocation: dict[str, object]) -> dict[str, str]:
                 selected = invocation["env"]
@@ -8434,14 +8479,11 @@ os.execv(target, [str(target), *sys.argv[1:]])
                 normalized["PATH"] = str(selected["PATH"])
                 return normalized
 
-            self.assertEqual(
-                normalized_runtime_env(probe_invocations[0]),
-                normalized_runtime_env(run_invocations[0]),
-            )
-            self.assertEqual(
-                normalized_runtime_env(run_invocations[0]),
-                normalized_runtime_env(run_invocations[1]),
-            )
+            for invocation in [*probe_invocations, *run_invocations]:
+                self.assertEqual(
+                    normalized_runtime_env(probe_invocations[0]),
+                    normalized_runtime_env(invocation),
+                )
 
     @unittest.skipIf(os.name == "nt", "the fake executable is POSIX-only")
     def test_dry_run_flag_exits_zero_when_bundle_and_engine_resolve(self) -> None:

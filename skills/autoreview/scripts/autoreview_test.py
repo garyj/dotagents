@@ -1169,7 +1169,8 @@ class AutoreviewAmpTests(unittest.TestCase):
             stream_engine_output=False,
             thinking="high",
         )
-        secret_prompt = "review diff PRIVATE_REVIEW_MARKER_8f3c"
+        private_marker = "PRIVATE_REVIEW_MARKER_8f3c"
+        secret_prompt = f"review diff {private_marker}\nCRLF\r\nbare\r🦊\nno final newline"
         observed: dict[str, object] = {}
 
         def fake_preflight(
@@ -1215,7 +1216,7 @@ class AutoreviewAmpTests(unittest.TestCase):
             settings_path = runtime_root / "settings.json"
             plugin_root = Path(str(env["XDG_CONFIG_HOME"])) / "amp" / "plugins"
             plugin_path = next(plugin_root.glob("autoreview-*.ts"))
-            observed["prompt"] = prompt_path.read_text(encoding="utf-8")
+            observed["prompt"] = prompt_path.read_bytes()
             observed["settings"] = json.loads(settings_path.read_text(encoding="utf-8"))
             observed["plugin"] = plugin_path.read_text(encoding="utf-8")
             observed["plugin_path"] = plugin_path
@@ -1264,9 +1265,9 @@ class AutoreviewAmpTests(unittest.TestCase):
         self.assertIn("--settings-file", command)
         self.assertNotIn("--orb-execute", command)
         self.assertEqual(command[command.index("--mode") + 1], "autoreview")
-        self.assertNotIn(secret_prompt, " ".join(command))
-        self.assertNotIn(secret_prompt, str(observed["input"]))
-        self.assertEqual(observed["prompt"], secret_prompt)
+        self.assertNotIn(private_marker, " ".join(command))
+        self.assertNotIn(private_marker, str(observed["input"]))
+        self.assertEqual(observed["prompt"], secret_prompt.encode("utf-8"))
         self.assertEqual(observed["workspace"], [])
         settings = observed["settings"]
         self.assertIsInstance(settings, dict)
@@ -1295,7 +1296,7 @@ class AutoreviewAmpTests(unittest.TestCase):
         })
         self.assertIn('tools: ["autoreview_generate"]', plugin)
         self.assertIn("readFileSync", plugin)
-        self.assertNotIn(secret_prompt, plugin)
+        self.assertNotIn(private_marker, plugin)
         env = observed["env"]
         self.assertIsInstance(env, dict)
         assert isinstance(env, dict)
@@ -1941,10 +1942,10 @@ class AutoreviewCompatibilityTests(unittest.TestCase):
                 reviewer = AUTOREVIEW.reviewer_args(AUTOREVIEW.parse_args())[0]
                 self.assertEqual(AUTOREVIEW.codex_speed_override(reviewer), expected)
 
-    def test_sol_61_and_astra_reject_unsupported_effort_before_preparation(self) -> None:
+    def test_sol_and_astra_reject_unsupported_effort_before_preparation(self) -> None:
         with tempfile.TemporaryDirectory(prefix="autoreview-invalid-effort.") as tempdir:
             for model, effort, source in itertools.product(
-                (None, "gpt-6.1-sol", "gpt-6-astra"),
+                (None, "gpt-6.1-sol", "gpt-6-astra", "gpt-6.2-sol", "gpt-6.2-astra"),
                 ("none", "minimal", "ultra"),
                 ("cli", "keyed-cli", "environment", "global-environment"),
             ):
@@ -1971,6 +1972,19 @@ class AutoreviewCompatibilityTests(unittest.TestCase):
                     self.assertEqual(result.stderr.strip(),
                                      f"invalid thinking level for codex model {model or 'gpt-6.1-sol'}: {effort} "
                                      "(valid: high, low, max, medium, xhigh)")
+
+    def test_sol_62_and_astra_62_accept_supported_efforts_without_fallback(self) -> None:
+        for model, effort in itertools.product(
+            ("gpt-6.2-sol", "gpt-6.2-astra"),
+            ("low", "medium", "high", "xhigh", "max"),
+        ):
+            with self.subTest(model=model, effort=effort), \
+                    mock.patch.dict(os.environ, {}, clear=True), \
+                    mock.patch.object(sys, "argv", ["autoreview", "--model", model, "--thinking", effort]):
+                reviewer = AUTOREVIEW.reviewer_args(AUTOREVIEW.parse_args())[0]
+                self.assertEqual(reviewer.model, model)
+                self.assertEqual(reviewer.thinking, effort)
+                self.assertIsNone(reviewer.fallback_model)
 
     def test_model_validation_uses_effective_cli_overrides(self) -> None:
         cases = (

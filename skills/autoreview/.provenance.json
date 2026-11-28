@@ -1,9 +1,9 @@
 {
   "source": "https://github.com/openclaw/agent-skills",
   "path": "skills/autoreview",
-  "commit": "0a5ba4b3c79ed4643c2b5f0b62af17d3cb4c8341",
+  "commit": "966eda5d1c937f05a46ecaa5838d13f6e358e324",
   "vetted": [
-    "2026-11-11 delta audit vs 16121cf (SKILL, references and helper diff read in full, tests by line counts, wrapper dry-run OK), verdict RUN: opt-in --review-batches allocation manifests, --max-prompt-bytes (default 512000 unchanged), --codex-no-fallback, --codex-route API-hostname provider selection with bearer-token auth, none configured here; --no-web-search also disables Codex cached search; interrupted runs publish an interrupted status with exit 128+signal; more terminal refresh-token markers; local type-change ownership fix; upstream hardcodes openclaw-specific context pins and four credential-doc directories admitted to review, inert here; default engine still codex; install-skills pointer still not to be run",
-    "2026-11-20 delta audit vs 0a5ba4b (references and helper diff read in full, tests by line counts, wrapper dry-run OK), verdict RUN: Codex login probe uses the filtered engine env; clearer unsupported-binary error; numbered RFC companion Markdown in credential-named dirs admitted to review; OpenClaw handoff timer moved to the host, openclaw not installed here; default engine still codex; install-skills pointer still not to be run"
+    "2026-11-20 delta audit vs 0a5ba4b (references and helper diff read in full, tests by line counts, wrapper dry-run OK), verdict RUN: Codex login probe uses the filtered engine env; clearer unsupported-binary error; numbered RFC companion Markdown in credential-named dirs admitted to review; OpenClaw handoff timer moved to the host, openclaw not installed here; default engine still codex; install-skills pointer still not to be run",
+    "2026-11-28 delta audit vs 0a5ba4b (helper and engines.md diff read in full, tests by line counts, wrapper dry-run and one real local review OK), verdict RUN with Codex under a sandbox-readable root: Linux preflight runs the selected Codex inside its tool sandbox (reads /bin /sbin /usr /etc /lib /lib64 /nix/store) and marks a home-directory install UNAVAILABLE, so ~/bin/autoreview points CODEX_BIN at the dotfiles root-owned copy in /usr/local/lib/codex; compact prompt framing when smaller; newline-preserving stdin; stray source attribution cleared instead of rejected; pass-count-aware evidence planning; gpt-6.2 Sol/Astra effort validation; default engine still codex"
   ]
 }
